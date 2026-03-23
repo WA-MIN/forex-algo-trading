@@ -8,7 +8,7 @@ import pandas as pd
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
-CLEAN_ROOT_DIR = PROJECT_DIR / "clean"
+CLEAN_ROOT_DIR = PROJECT_DIR / "data" / "processed"
 CLEANED_DIR = CLEAN_ROOT_DIR / "cleaned"
 
 FEATURE_ROOT_DIR = PROJECT_DIR / "features"

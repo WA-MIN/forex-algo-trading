@@ -10,7 +10,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_DIR / "data"
 PARQUET_DIR = DATA_DIR / "parquet"
 
-CLEAN_ROOT_DIR = PROJECT_DIR / "clean"
+CLEAN_ROOT_DIR = DATA_DIR / "processed"
 CLEANED_DIR = CLEAN_ROOT_DIR / "cleaned"
 CLEAN_REPORTS_DIR = CLEAN_ROOT_DIR / "reports"
 
