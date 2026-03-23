@@ -18,28 +18,37 @@ Key Design: Immutable data stages. Stable artifacts. Reproducible research.
 ```
 fx-experiment-platform/
 ├── data/
-│ └── parquet/                 # Canonical raw minute data
+│ └── parquet/                 # Canonical raw minute data *[Tracked]*
+│
 ├── eda/
 │ ├── raw_snapshot/            # Exploratory analysis
 │ └── reports/                 # EDA notebooks/figures
+│
 ├── clean/                     # Cleaned data artifacts
 ├── features/                  # Engineered features
 ├── labels/                    # Trading signals
+│
 ├── datasets/
 │ ├── train/                   # Fixed splits
 │ ├── val/
 │ └── test/
 │ └── reports/                 # Split metadata
-├── scripts/                   # CLI pipeline
+│
+├── scripts/                   # CLI pipeline  *[Tracked]*
 │ ├── clean_fx_data.py
 │ ├── build_fx_features.py
 │ ├── build_fx_labels.py
 │ ├── split_fx_dataset.py
 │ └── run_backtests.py
-├── strategies/               # Momentum, MA, etc.
-├── backtest/                 # Execution engine
+│
+├── strategies/               # Momentum, MA, etc. *[Tracked]*
+│
+├── backtest/                 # Execution engine *[Tracked]*
+│
 ├── experiments/              # Results (local only)
-├── requirements.txt
+│
+├── requirements.txt          *[Tracked]*
+│
 └── README.md
 
 ```
