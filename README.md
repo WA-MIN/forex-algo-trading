@@ -18,13 +18,17 @@ Key Design: Immutable data stages. Stable artifacts. Reproducible research.
 ```
 fx-experiment-platform/
 ├── data/
-│ └── parquet/                 # Canonical raw minute data - [Tracked]
+│ └── examples/                 # Example of AUDUSD dataset 2020 Csv data and Parquet (10 years) [Tracked]
+│ └── extracted/
+│ └── parquet/
+│ └── processed/
+│    └── cleaned/              # Cleaned dataset
+|    └── reports/
 │
 ├── eda/
 │ ├── raw_snapshot/            # Exploratory analysis
 │ └── reports/                 # EDA notebooks/figures
 │
-├── clean/                     # Cleaned data artifacts
 ├── features/                  # Engineered features
 ├── labels/                    # Trading signals
 │
