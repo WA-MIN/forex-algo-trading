@@ -119,10 +119,12 @@ No trade (0) -> Dead zone
 
 Metric | Purpose
 ---|---
+Total Return | Overall % profit/loss 
 Sharpe Ratio | Risk-adjusted returns
 Profit Factor | Gross profit / loss
 Max Drawdown | Worst peak-to-trough
 Win Rate | % Profitable trades
+Volatility | Variability of returns
 
 Cost-aware: Realistic spreads + slippage.
 
