@@ -10,7 +10,7 @@ This repository implements a complete end-to-end pipeline for algorithmic FX res
 
 The central research question is:
 
-> Under realistic transaction costs and strict time-series cross-validation, which strategy class -- rule-based, linear ML, or deep learning -- delivers the best risk-adjusted net performance on minute-level FX data?
+> Under realistic transaction costs and strict time-series cross-validation, which strategy class - rule-based, linear ML, or deep learning - delivers the best risk-adjusted net performance on minute-level FX data?
 
 ---
 
