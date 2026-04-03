@@ -1,0 +1,1 @@
+backtest/reports/val_AUDUSD_MACrossover_f20_s50_EMA.html filter=lfs diff=lfs merge=lfs -text

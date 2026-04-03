@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>__TITLE__</title>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:           #0b0d10;
+    --surface:      #111318;
+    --surface-2:    #161a20;
+    --surface-3:    #1c2028;
+    --border:       rgba(255,255,255,0.08);
+    --border-faint: rgba(255,255,255,0.04);
+    --text:         #dde1ea;
+    --text-muted:   #8a91a8;
+    --text-faint:   #454c5e;
+    --accent:       #4f8ef7;
+    --accent-dim:   rgba(79,142,247,0.14);
+    --green:        #34d058;
+    --green-dim:    rgba(52,208,88,0.13);
+    --red:          #f05252;
+    --red-dim:      rgba(240,82,82,0.13);
+    --gold:         #f4b942;
+    --gold-dim:     rgba(244,185,66,0.13);
+    --radius:       6px;
+    --radius-lg:    10px;
+    --font-body:    'DM Sans', system-ui, sans-serif;
+    --font-mono:    'JetBrains Mono', monospace;
+  }
+
+  html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-body);
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-brand { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
+
+  .brand-eyebrow {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px;
+  }
+
+  .brand-name { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+  .brand-name span { color: var(--accent); }
+
+  .brand-sub { font-size: 10px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono); }
+
+  .sidebar-filters { padding: 14px 14px 6px; }
+  .filter-group { margin-bottom: 10px; }
+
+  .filter-group label {
+    display: block; font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px;
+  }
+
+  .filter-group select {
+    width: 100%; padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: var(--surface-2);
+    font-family: var(--font-body); font-size: 12px; color: var(--text);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a91a8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    cursor: pointer; transition: border-color 150ms;
+  }
+
+  .filter-group select:hover { border-color: var(--accent); }
+  .filter-group select:focus { outline: none; border-color: var(--accent); }
+  .filter-group select option { background: var(--surface-2); color: var(--text); }
+
+  .sidebar-nav { padding: 8px 10px; flex: 1; }
+
+  .nav-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-faint); padding: 10px 8px 5px;
+  }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    border-radius: var(--radius); font-size: 12px; font-weight: 500;
+    color: var(--text-muted); cursor: pointer;
+    transition: background 150ms, color 150ms; margin-bottom: 1px; user-select: none;
+  }
+
+  .nav-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--text-faint); flex-shrink: 0; transition: background 150ms;
+  }
+
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+  .nav-item:hover .nav-dot { background: var(--text-muted); }
+  .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+  .nav-item.active .nav-dot { background: var(--accent); }
+
+  .sidebar-footer {
+    padding: 12px 16px; border-top: 1px solid var(--border);
+    font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); line-height: 1.8;
+  }
+
+  .main { margin-left: 220px; flex: 1; min-width: 0; }
+
+  .topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 26px; height: 52px; position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+
+  .topbar-left { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+  .topbar-title {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .topbar-meta { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+  .topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+  .badge-split {
+    padding: 3px 10px; border-radius: 99px; font-size: 10px; font-weight: 600;
+    font-family: var(--font-mono); background: var(--gold-dim); color: var(--gold);
+    border: 1px solid rgba(244,185,66,0.2); letter-spacing: 0.05em;
+  }
+
+  .btn-export {
+    padding: 7px 16px; background: var(--accent); color: #fff; border: none;
+    border-radius: var(--radius); font-size: 12px; font-weight: 600;
+    font-family: var(--font-body); cursor: pointer; transition: opacity 150ms;
+  }
+
+  .btn-export:hover { opacity: 0.85; }
+
+  .content { padding: 22px 26px 48px; }
+  .section { margin-bottom: 34px; scroll-margin-top: 68px; }
+
+  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+
+  .section-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-muted); white-space: nowrap;
+  }
+
+  .section-line { flex: 1; height: 1px; background: var(--border); }
+
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr));
+    gap: 10px; margin-bottom: 18px;
+  }
+
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 16px 16px 12px;
+    position: relative; overflow: hidden;
+  }
+
+  .kpi-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+
+  .kpi-card.positive::before { background: var(--green); }
+  .kpi-card.negative::before { background: var(--red); }
+  .kpi-card.neutral::before  { background: var(--text-faint); }
+
+  .kpi-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+  }
+
+  .kpi-value {
+    font-family: var(--font-mono); font-size: 22px; font-weight: 500;
+    color: var(--text); line-height: 1; letter-spacing: -0.02em;
+  }
+
+  .kpi-value.pos { color: var(--green); }
+  .kpi-value.neg { color: var(--red); }
+  .kpi-sub { font-size: 10px; color: var(--text-faint); margin-top: 6px; }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 18px 18px 14px; margin-bottom: 12px;
+  }
+
+  .chart-head { margin-bottom: 12px; }
+  .chart-head h3 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .chart-head p  { font-size: 11px; color: var(--text-muted); }
+
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .meta-strip {
+    display: flex; flex-wrap: wrap; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius-lg);
+    overflow: hidden; margin-bottom: 16px;
+  }
+
+  .meta-item {
+    display: flex; flex-direction: column; gap: 3px; padding: 13px 18px;
+    border-right: 1px solid var(--border); flex: 1; min-width: 110px;
+  }
+
+  .meta-item:last-child { border-right: none; }
+
+  .meta-item .mi-label {
+    font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+
+  .meta-item .mi-value { font-size: 12px; font-family: var(--font-mono); color: var(--text); }
+
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: auto;
+  }
+
+  .table-card table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+  .table-card thead th {
+    background: var(--surface-2); padding: 9px 13px; text-align: left;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  }
+
+  .table-card tbody tr { border-bottom: 1px solid var(--border-faint); transition: background 100ms; }
+  .table-card tbody tr:last-child { border-bottom: none; }
+  .table-card tbody tr:hover { background: var(--surface-2); }
+
+  .table-card tbody td {
+    padding: 9px 13px; font-family: var(--font-mono);
+    font-size: 11px; color: var(--text); white-space: nowrap;
+  }
+
+  .table-card tbody td.label-cell {
+    font-family: var(--font-body); font-weight: 500; font-size: 12px; color: var(--text);
+  }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: 10px; font-weight: 600; font-family: var(--font-mono);
+  }
+
+  .pill-green { background: var(--green-dim);  color: var(--green); }
+  .pill-red   { background: var(--red-dim);    color: var(--red); }
+  .pill-blue  { background: var(--accent-dim); color: var(--accent); }
+  .pill-grey  { background: rgba(255,255,255,0.05); color: var(--text-muted); }
+
+  /* ── Print page setup — MUST be before @media print ── */
+  @page { size: A4 landscape; margin: 10mm 8mm; }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* ── Override ALL dark tokens to light ── */
+    :root {
+      --bg:           #ffffff !important;
+      --surface:      #ffffff !important;
+      --surface-2:    #f5f6f8 !important;
+      --surface-3:    #eceef2 !important;
+      --border:       rgba(0,0,0,0.10) !important;
+      --border-faint: rgba(0,0,0,0.05) !important;
+      --text:         #111827 !important;
+      --text-muted:   #4b5563 !important;
+      --text-faint:   #9ca3af !important;
+      --accent:       #1d6ef5 !important;
+      --accent-dim:   rgba(29,110,245,0.10) !important;
+      --green:        #16a34a !important;
+      --green-dim:    rgba(22,163,74,0.12) !important;
+      --red:          #dc2626 !important;
+      --red-dim:      rgba(220,38,38,0.10) !important;
+      --gold:         #b45309 !important;
+      --gold-dim:     rgba(180,83,9,0.10) !important;
+    }
+
+    body {
+      background: #fff !important;
+      color: #111827 !important;
+      font-size: 10px !important;
+      min-height: unset !important;
+    }
+
+    .sidebar, .topbar, .btn-export { display: none !important; }
+    .layout { display: block !important; }
+    .main   { margin-left: 0 !important; display: block !important; }
+    .content { padding: 4mm 6mm !important; }
+
+    .chart-card {
+      background: #fff !important;
+      border: 1px solid #e5e7eb !important;
+      break-inside: avoid;
+    }
+
+    .kpi-card {
+      background: #fff !important;
+      border: 1px solid #e5e7eb !important;
+      box-shadow: none !important;
+      break-inside: avoid;
+    }
+
+    .section#sec-metrics { break-before: page; }
+
+    .table-card {
+      overflow: visible !important;
+      background: #fff !important;
+      border: 1px solid #e5e7eb !important;
+      box-shadow: none !important;
+      border-radius: 0 !important;
+    }
+
+    .table-card table { font-size: 8px !important; width: 100% !important; page-break-inside: auto; }
+    .table-card thead { display: table-header-group; }
+    .table-card tbody tr { page-break-inside: avoid; }
+
+    .table-card thead th {
+      background: #f5f6f8 !important; color: #4b5563 !important;
+      position: static !important; border-bottom: 1px solid #e5e7eb !important;
+    }
+
+    .table-card thead th,
+    .table-card tbody td { padding: 4px 6px !important; white-space: nowrap !important; }
+
+    .table-card tbody td           { color: #111827 !important; }
+    .table-card tbody td.label-cell { color: #111827 !important; }
+
+    .meta-strip {
+      background: #fff !important; border: 1px solid #e5e7eb !important; break-inside: avoid;
+    }
+
+    .meta-item { border-right-color: #e5e7eb !important; }
+
+    .pill-green { background: #dcfce7 !important; color: #16a34a !important; }
+    .pill-red   { background: #fee2e2 !important; color: #dc2626 !important; }
+    .pill-blue  { background: #dbeafe !important; color: #1d4ed8 !important; }
+
+    .chart-row  { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+    .kpi-grid   { grid-template-columns: repeat(6, 1fr) !important; gap: 6px !important; }
+    .section    { margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-eyebrow">Research Platform</div>
+    <div class="brand-name">FX<span>Algo</span></div>
+    <div class="brand-sub" id="meta-generated">Loading...</div>
+  </div>
+  <div class="sidebar-filters">
+    <div class="filter-group">
+      <label>Currency Pair</label>
+      <select id="filter-pair" onchange="applyFilters()"></select>
+    </div>
+    <div class="filter-group">
+      <label>Strategy</label>
+      <select id="filter-strategy" onchange="applyFilters()"></select>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="nav-label">Sections</div>
+    <div class="nav-item active" onclick="navTo(event,'sec-overview')"><span class="nav-dot"></span>Overview</div>
+    <div class="nav-item" onclick="navTo(event,'sec-equity')"><span class="nav-dot"></span>Equity Curve</div>
+    <div class="nav-item" onclick="navTo(event,'sec-drawdown')"><span class="nav-dot"></span>Drawdown</div>
+    <div class="nav-item" onclick="navTo(event,'sec-rolling')"><span class="nav-dot"></span>Rolling Sharpe</div>
+    <div class="nav-item" onclick="navTo(event,'sec-signals')"><span class="nav-dot"></span>Signal Distribution</div>
+    <div class="nav-item" onclick="navTo(event,'sec-metrics')"><span class="nav-dot"></span>Metrics Table</div>
+  </nav>
+  <div class="sidebar-footer" id="sidebar-footer">Loading...</div>
+</aside>
+
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-title" id="report-title">FXAlgo Backtest Report</div>
+      <div class="topbar-meta" id="report-subtitle">Loading...</div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge-split" id="badge-split">VAL</span>
+      <button class="btn-export" onclick="exportPDF()">Export PDF</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="section" id="sec-overview">
+      <div class="section-header"><div class="section-title">Overview</div><div class="section-line"></div></div>
+      <div class="meta-strip" id="meta-strip"></div>
+      <div class="kpi-grid" id="kpi-grid"></div>
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="chart-head"><h3>Net Sharpe by Strategy</h3><p>Average across selected pairs</p></div>
+          <div id="chart-sharpe-bar" style="height:200px"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-head"><h3>Total Return by Pair</h3><p>Net of transaction costs</p></div>
+          <div id="chart-return-bar" style="height:200px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-equity">
+      <div class="section-header">
+        <div class="section-title">Equity Curve</div>
+        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="equity-pair-label"></div>
+        <div class="section-line"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>Cumulative Equity</h3><p>Normalised to 1.0 at start. Log returns compounded. All strategies overlaid.</p></div>
+        <div id="chart-equity" style="height:290px"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-drawdown">
+      <div class="section-header">
+        <div class="section-title">Drawdown</div>
+        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="dd-pair-label"></div>
+        <div class="section-line"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>Underwater Equity</h3><p>Peak-to-trough drawdown over time.</p></div>
+        <div id="chart-drawdown" style="height:250px"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-rolling">
+      <div class="section-header">
+        <div class="section-title">Rolling Sharpe</div>
+        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="roll-pair-label"></div>
+        <div class="section-line"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>21-Bar Rolling Sharpe</h3><p>Annualised. Zero line marks regime boundary.</p></div>
+        <div id="chart-rolling" style="height:250px"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-signals">
+      <div class="section-header"><div class="section-title">Signal Distribution</div><div class="section-line"></div></div>
+      <div class="chart-card">
+        <div class="chart-head"><h3>Long / Short / Flat Counts</h3><p>Exposes position bias per pair and strategy.</p></div>
+        <div id="chart-signals" style="height:250px"></div>
+      </div>
+    </div>
+
+    <div class="section" id="sec-metrics">
+      <div class="section-header"><div class="section-title">Metrics Table</div><div class="section-line"></div></div>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Pair</th><th>Strategy</th><th>Net Sharpe</th><th>Gross Sharpe</th>
+              <th>Return</th><th>Max DD</th><th>Calmar</th><th>Win Rate</th>
+              <th>Profit Factor</th><th>Sortino</th><th>Trades</th><th>Turnover</th>
+            </tr>
+          </thead>
+          <tbody id="metrics-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+
+<script>
+const DATA = __DATA_JSON__;
+
+const PALETTE_DARK  = ["#4f8ef7","#34d058","#f4b942","#a78bfa","#38c4d4","#fb8c4a","#f472b6"];
+const PALETTE_LIGHT = ["#1d6ef5","#16a34a","#b45309","#7c3aed","#0891b2","#ea580c","#db2777"];
+
+let isPrinting = false;
+
+/* ── Redraw all Plotly charts with light colours before printing ── */
+function replotForPrint(light) {
+  const gridCol  = light ? "rgba(0,0,0,0.06)"  : "rgba(255,255,255,0.05)";
+  const lineCol  = light ? "rgba(0,0,0,0.10)"  : "rgba(255,255,255,0.08)";
+  const tickCol  = light ? "#4b5563"            : "#8a91a8";
+  const fontCol  = light ? "#4b5563"            : "#8a91a8";
+  const zeroCol  = light ? "rgba(0,0,0,0.15)"  : "rgba(255,255,255,0.15)";
+  const bgCol    = light ? "#ffffff"            : "rgba(0,0,0,0)";
+  const hoverBg  = light ? "#f9fafb"            : "#1c2028";
+  const hoverFg  = light ? "#111827"            : "#dde1ea";
+  const palette  = light ? PALETTE_LIGHT        : PALETTE_DARK;
+
+  const axisUpdate = {
+    "xaxis.gridcolor": gridCol, "xaxis.linecolor": lineCol,
+    "xaxis.tickfont.color": tickCol, "yaxis.gridcolor": gridCol,
+    "yaxis.linecolor": lineCol, "yaxis.tickfont.color": tickCol,
+    "yaxis.zerolinecolor": zeroCol,
+    paper_bgcolor: bgCol, plot_bgcolor: bgCol,
+    "font.color": fontCol,
+    "legend.font.color": fontCol,
+    "hoverlabel.bgcolor": hoverBg,
+    "hoverlabel.font.color": hoverFg,
+  };
+
+  ["chart-sharpe-bar","chart-return-bar","chart-equity",
+   "chart-drawdown","chart-rolling","chart-signals"].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el || !el._fullLayout) return;
+    Plotly.relayout(id, axisUpdate);
+    /* Recolour bar markers */
+    const data = el.data;
+    if (!data) return;
+    data.forEach((trace, i) => {
+      if (trace.type === "bar") {
+        const yVals = trace.y || [];
+        if (id === "chart-sharpe-bar") {
+          Plotly.restyle(id, { "marker.color": [yVals.map(v => v >= 0 ? (light ? "#1d6ef5" : "#4f8ef7") : (light ? "#dc2626" : "#f05252"))] }, [i]);
+        } else if (id === "chart-return-bar") {
+          Plotly.restyle(id, { "marker.color": [yVals.map(v => v >= 0 ? (light ? "#16a34a" : "#34d058") : (light ? "#dc2626" : "#f05252"))] }, [i]);
+        } else {
+          /* signal bars */
+          const sigColours = light
+            ? ["#16a34a", "#dc2626", "#6b7280"]
+            : ["#34d058", "#f05252", "#454c5e"];
+          Plotly.restyle(id, { "marker.color": sigColours[i] }, [i]);
+        }
+      } else if (trace.type === "scatter" && trace.name !== "Zero") {
+        Plotly.restyle(id, { "line.color": palette[i % palette.length] }, [i]);
+        if (trace.fill) {
+          Plotly.restyle(id, { fillcolor: palette[i % palette.length] + "22" }, [i]);
+        }
+      }
+      /* recolour text labels on bars */
+      if (trace.textfont) {
+        Plotly.restyle(id, { "textfont.color": tickCol }, [i]);
+      }
+    });
+  });
+}
+
+window.addEventListener("beforeprint", () => { isPrinting = true;  replotForPrint(true);  });
+window.addEventListener("afterprint",  () => { isPrinting = false; replotForPrint(false); });
+
+function exportPDF() { window.print(); }
+
+function navTo(e, id) {
+  document.getElementById(id).scrollIntoView({ behavior: "smooth" });
+  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
+  e.currentTarget.classList.add("active");
+}
+
+function filtered() {
+  const pair  = document.getElementById("filter-pair").value;
+  const strat = document.getElementById("filter-strategy").value;
+  return DATA.results.filter(r =>
+    (pair  === "all" || r.pair     === pair) &&
+    (strat === "all" || r.strategy === strat)
+  );
+}
+
+function applyFilters() {
+  const results = filtered();
+  renderKPIs(results);
+  renderOverviewBars(results);
+  renderEquity(results);
+  renderDrawdown(results);
+  renderRolling(results);
+  renderSignals(results);
+  renderMetricsTable(results);
+}
+
+function cfg() { return { displayModeBar: false, responsive: true }; }
+
+function baseLayout(extra) {
+  return Object.assign({
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor:  "rgba(0,0,0,0)",
+    font: { family: "'DM Sans', sans-serif", size: 11, color: "#8a91a8" },
+    margin: { t: 8, r: 16, b: 40, l: 58 },
+    xaxis: {
+      gridcolor: "rgba(255,255,255,0.05)", linecolor: "rgba(255,255,255,0.08)",
+      zeroline: false, tickfont: { color: "#8a91a8", size: 10 }, automargin: true,
+    },
+    yaxis: {
+      gridcolor: "rgba(255,255,255,0.05)", linecolor: "rgba(255,255,255,0.08)",
+      zeroline: false, tickfont: { color: "#8a91a8", size: 10 }, automargin: true,
+    },
+    legend: {
+      orientation: "h", y: -0.22, x: 0,
+      font: { size: 10, color: "#8a91a8" }, bgcolor: "rgba(0,0,0,0)",
+    },
+    hovermode: "x unified",
+    hoverlabel: {
+      bgcolor: "#1c2028", bordercolor: "rgba(255,255,255,0.1)",
+      font: { color: "#dde1ea", size: 11, family: "'JetBrains Mono', monospace" },
+    },
+  }, extra || {});
+}
+
+function buildFilters() {
+  const ps = document.getElementById("filter-pair");
+  const ss = document.getElementById("filter-strategy");
+  ps.innerHTML = '<option value="all">All pairs</option>';
+  ss.innerHTML = '<option value="all">All strategies</option>';
+  DATA.meta.pairs.forEach(p => {
+    const o = document.createElement("option"); o.value = p; o.textContent = p; ps.appendChild(o);
+  });
+  DATA.meta.strategies.forEach(s => {
+    const o = document.createElement("option"); o.value = s; o.textContent = s; ss.appendChild(o);
+  });
+}
+
+function renderMeta() {
+  document.getElementById("report-title").textContent    = DATA.meta.title;
+  document.getElementById("report-subtitle").textContent =
+    "Split: " + DATA.meta.splits.join(", ") + "  ·  " + DATA.meta.generated;
+  document.getElementById("meta-generated").textContent  = DATA.meta.generated;
+  document.getElementById("badge-split").textContent     = DATA.meta.splits.join(", ").toUpperCase();
+  document.getElementById("sidebar-footer").innerHTML    =
+    DATA.meta.pairs.length + " pair(s)\n" +
+    DATA.meta.strategies.length + " strategy\n" +
+    DATA.results.length + " run(s)";
+
+  const items = [
+    ["Pairs",      DATA.meta.pairs.join(", ")],
+    ["Strategies", DATA.meta.strategies.length + " loaded"],
+    ["Split",      DATA.meta.splits.join(", ").toUpperCase()],
+    ["Generated",  DATA.meta.generated],
+    ["Runs",       DATA.results.length],
+  ];
+  document.getElementById("meta-strip").innerHTML = items.map(([k, v]) =>
+    '<div class="meta-item"><span class="mi-label">' + k + '</span><span class="mi-value">' + v + '</span></div>'
+  ).join("");
+}
+
+function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+function fmt(v, d) { d = d == null ? 2 : d; return v == null ? "-" : (+v).toFixed(d); }
+function pct(v, d) { d = d == null ? 1 : d; return v == null ? "-" : (v * 100).toFixed(d) + "%"; }
+
+function renderKPIs(results) {
+  if (!results.length) { document.getElementById("kpi-grid").innerHTML = ""; return; }
+  const sharpes   = results.map(r => r.metrics.net_sharpe);
+  const returns   = results.map(r => r.metrics.total_return);
+  const drawdowns = results.map(r => r.metrics.max_drawdown);
+  const kpis = [
+    { label: "Best Net Sharpe",  value: fmt(Math.max(...sharpes)),  cls: Math.max(...sharpes) >= 0 ? "pos" : "neg", card: Math.max(...sharpes) >= 0 ? "positive" : "negative", sub: "single run" },
+    { label: "Avg Net Sharpe",   value: fmt(avg(sharpes)),          cls: avg(sharpes) >= 0 ? "pos" : "neg",         card: avg(sharpes) >= 0 ? "positive" : "negative",         sub: "across selection" },
+    { label: "Best Return",      value: pct(Math.max(...returns)),  cls: "pos", card: "positive", sub: "net of costs" },
+    { label: "Avg Max Drawdown", value: pct(avg(drawdowns)),        cls: "neg", card: "negative", sub: "avg across runs" },
+    { label: "Pairs",            value: DATA.meta.pairs.length,     cls: "",    card: "neutral",  sub: "in run" },
+    { label: "Total Runs",       value: results.length,             cls: "",    card: "neutral",  sub: "shown" },
+  ];
+  document.getElementById("kpi-grid").innerHTML = kpis.map(k =>
+    '<div class="kpi-card ' + k.card + '">' +
+    '<div class="kpi-label">' + k.label + '</div>' +
+    '<div class="kpi-value ' + k.cls + '">' + k.value + '</div>' +
+    '<div class="kpi-sub">' + k.sub + '</div></div>'
+  ).join("");
+}
+
+function safeRange(vals) {
+  if (!vals.length) return [-1, 1];
+  const mn  = Math.min(...vals);
+  const mx  = Math.max(...vals);
+  const pad = Math.max(Math.abs(mx - mn) * 0.25, 0.2);
+  return [mn - pad, mx + pad];
+}
+
+function renderOverviewBars(results) {
+  const strats = [...new Set(results.map(r => r.strategy))];
+  const pairs  = [...new Set(results.map(r => r.pair))];
+  const sVals  = strats.map(s => avg(results.filter(r => r.strategy === s).map(r => r.metrics.net_sharpe)));
+  const rPct   = pairs.map(p => +(avg(results.filter(r => r.pair === p).map(r => r.metrics.total_return)) * 100).toFixed(2));
+
+  Plotly.newPlot("chart-sharpe-bar", [{
+    type: "bar", x: strats, y: sVals, cliponaxis: false,
+    marker: { color: sVals.map(v => v >= 0 ? "#4f8ef7" : "#f05252"), opacity: 0.9 },
+    text: sVals.map(v => fmt(v, 3)), textposition: "outside",
+    textfont: { color: "#8a91a8", size: 10 },
+    hovertemplate: "<b>%{x}</b><br>Sharpe: %{y:.3f}<extra></extra>",
+  }], baseLayout({
+    margin: { t: 36, r: 20, b: 64, l: 58 },
+    yaxis: { range: safeRange(sVals), automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
+    xaxis: { automargin: true },
+  }), cfg());
+
+  Plotly.newPlot("chart-return-bar", [{
+    type: "bar", x: pairs, y: rPct, cliponaxis: false,
+    marker: { color: rPct.map(v => v >= 0 ? "#34d058" : "#f05252"), opacity: 0.9 },
+    text: rPct.map(v => v.toFixed(2) + "%"), textposition: "outside",
+    textfont: { color: "#8a91a8", size: 10 },
+    hovertemplate: "<b>%{x}</b><br>Return: %{y:.2f}%<extra></extra>",
+  }], baseLayout({
+    margin: { t: 36, r: 20, b: 64, l: 58 },
+    yaxis: { ticksuffix: "%", range: safeRange(rPct), automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
+    xaxis: { automargin: true },
+  }), cfg());
+}
+
+function renderEquity(results) {
+  const pairs = [...new Set(results.map(r => r.pair))];
+  const pair  = pairs[0] || "";
+  document.getElementById("equity-pair-label").textContent = pair;
+  const subset = results.filter(r => r.pair === pair);
+  Plotly.newPlot("chart-equity", subset.map((r, i) => ({
+    type: "scatter", mode: "lines", name: r.strategy,
+    y: r.equity, x: Array.from({ length: r.equity.length }, (_, k) => k),
+    line: { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.8 },
+    hovertemplate: "<b>" + r.strategy + "</b><br>Bar %{x}<br>Equity: %{y:.4f}<extra></extra>",
+  })), baseLayout({
+    yaxis: { title: { text: "Equity (norm.)", font: { size: 10 } }, automargin: true },
+    xaxis: { title: { text: "Bar", font: { size: 10 } }, automargin: true },
+  }), cfg());
+}
+
+function drawdownSeries(equity) {
+  let peak = equity[0];
+  return equity.map(v => { if (v > peak) peak = v; return peak > 0 ? (v - peak) / peak : 0; });
+}
+
+function renderDrawdown(results) {
+  const pairs = [...new Set(results.map(r => r.pair))];
+  const pair  = pairs[0] || "";
+  document.getElementById("dd-pair-label").textContent = pair;
+  const subset = results.filter(r => r.pair === pair);
+  Plotly.newPlot("chart-drawdown", subset.map((r, i) => ({
+    type: "scatter", mode: "lines", fill: "tozeroy", name: r.strategy,
+    y: drawdownSeries(r.equity), x: Array.from({ length: r.equity.length }, (_, k) => k),
+    line: { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.2 },
+    fillcolor: PALETTE_DARK[i % PALETTE_DARK.length] + "22",
+    hovertemplate: "<b>" + r.strategy + "</b><br>DD: %{y:.2%}<extra></extra>",
+  })), baseLayout({
+    yaxis: { tickformat: ".0%", zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)", automargin: true },
+    xaxis: { title: { text: "Bar", font: { size: 10 } }, automargin: true },
+  }), cfg());
+}
+
+function renderRolling(results) {
+  const pairs = [...new Set(results.map(r => r.pair))];
+  const pair  = pairs[0] || "";
+  document.getElementById("roll-pair-label").textContent = pair;
+  const subset = results.filter(r => r.pair === pair);
+  const traces = subset.map((r, i) => ({
+    type: "scatter", mode: "lines", name: r.strategy,
+    y: r.rolling_sharpe, x: Array.from({ length: r.rolling_sharpe.length }, (_, k) => k),
+    line: { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.5 },
+    hovertemplate: "<b>" + r.strategy + "</b><br>Sharpe: %{y:.2f}<extra></extra>",
+  }));
+  const zLen = subset[0] ? subset[0].rolling_sharpe.length : 0;
+  traces.push({
+    type: "scatter", mode: "lines", name: "Zero",
+    y: new Array(zLen).fill(0), x: Array.from({ length: zLen }, (_, k) => k),
+    line: { color: "rgba(255,255,255,0.18)", width: 1, dash: "dot" },
+    showlegend: false, hoverinfo: "skip",
+  });
+  Plotly.newPlot("chart-rolling", traces, baseLayout({
+    yaxis: { title: { text: "Rolling Sharpe", font: { size: 10 } }, automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
+    xaxis: { title: { text: "Bar", font: { size: 10 } }, automargin: true },
+  }), cfg());
+}
+
+function getSignalCount(r, key) {
+  const sd = r.signal_dist || {};
+  if (key === "Long")  return sd["Long"]  != null ? sd["Long"]  : (sd[1]  || 0);
+  if (key === "Short") return sd["Short"] != null ? sd["Short"] : (sd[-1] || 0);
+  if (key === "Flat")  return sd["Flat"]  != null ? sd["Flat"]  : (sd[0]  || 0);
+  return 0;
+}
+
+function renderSignals(results) {
+  const pairs = [...new Set(results.map(r => r.pair))];
+  Plotly.newPlot("chart-signals", [
+    { type: "bar", name: "Long",  x: pairs, marker: { color: "#34d058", opacity: 0.85 },
+      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Long"),  0)),
+      hovertemplate: "<b>%{x}</b><br>Long: %{y:,}<extra></extra>" },
+    { type: "bar", name: "Short", x: pairs, marker: { color: "#f05252", opacity: 0.85 },
+      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Short"), 0)),
+      hovertemplate: "<b>%{x}</b><br>Short: %{y:,}<extra></extra>" },
+    { type: "bar", name: "Flat",  x: pairs, marker: { color: "#454c5e", opacity: 0.9  },
+      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Flat"),  0)),
+      hovertemplate: "<b>%{x}</b><br>Flat: %{y:,}<extra></extra>" },
+  ], baseLayout({
+    barmode: "group", margin: { t: 8, r: 16, b: 50, l: 58 },
+    xaxis: { automargin: true }, yaxis: { automargin: true },
+  }), cfg());
+}
+
+function sharpePill(v) {
+  if (v >= 1.0) return '<span class="pill pill-green">' + fmt(v) + '</span>';
+  if (v >= 0.0) return '<span class="pill pill-blue">'  + fmt(v) + '</span>';
+  return '<span class="pill pill-red">' + fmt(v) + '</span>';
+}
+
+function renderMetricsTable(results) {
+  const sorted = [...results].sort((a, b) => b.metrics.net_sharpe - a.metrics.net_sharpe);
+  document.getElementById("metrics-tbody").innerHTML = sorted.map(r => {
+    const m  = r.metrics;
+    const rc = m.total_return >= 0 ? "var(--green)" : "var(--red)";
+    const wr = m.win_rate === 0 && m.n_trades > 0
+      ? '<span style="color:var(--red)">0.0%</span>'
+      : pct(m.win_rate);
+    return "<tr>" +
+      '<td class="label-cell">' + r.pair     + "</td>" +
+      '<td class="label-cell">' + r.strategy + "</td>" +
+      "<td>" + sharpePill(m.net_sharpe)                     + "</td>" +
+      "<td>" + fmt(m.gross_sharpe)                          + "</td>" +
+      "<td style='color:" + rc + "'>" + pct(m.total_return) + "</td>" +
+      "<td style='color:var(--red)'>" + pct(m.max_drawdown) + "</td>" +
+      "<td>" + fmt(m.calmar)                                + "</td>" +
+      "<td>" + wr                                           + "</td>" +
+      "<td>" + fmt(m.profit_factor)                         + "</td>" +
+      "<td>" + fmt(m.sortino)                               + "</td>" +
+      "<td>" + m.n_trades.toLocaleString()                  + "</td>" +
+      "<td>" + pct(m.turnover)                              + "</td>" +
+      "</tr>";
+  }).join("");
+}
+
+function init() { buildFilters(); renderMeta(); applyFilters(); }
+init();
+</script>
+</body>
+</html>
