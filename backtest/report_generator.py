@@ -23,7 +23,6 @@ SPREAD_TABLE_JS = {
     "NZDUSD": 1.8,
 }
 
-
 # - Helpers -
 def _safe_float(v: float, precision: int = 6) -> float:
     """Round a float and replace inf/nan with 0 so JSON never breaks."""
@@ -177,3 +176,8 @@ def generate_report(
         print(f"  Opened in browser.")
 
     return out
+
+
+
+
+# for commit

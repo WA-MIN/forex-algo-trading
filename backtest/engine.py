@@ -304,7 +304,6 @@ def run_cv_folds(
 
     return results
 
-
 if __name__ == "__main__":
     import random
     random.seed(42)
@@ -333,3 +332,6 @@ if __name__ == "__main__":
     print(f"N Trades:      {result.n_trades}")
     print(f"Turnover:      {result.turnover:.4f}")
     print("Smoke test passed.")
+
+
+    # for commit
