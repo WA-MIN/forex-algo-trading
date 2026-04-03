@@ -7,14 +7,15 @@ import pandas as pd
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
-LABEL_ROOT_DIR   = PROJECT_DIR / "labels"
-LABEL_PAIR_DIR   = LABEL_ROOT_DIR / "pair"
+LABEL_ROOT_DIR = PROJECT_DIR / "labels"
+LABEL_PAIR_DIR = LABEL_ROOT_DIR / "pair"
 
-SPLIT_ROOT_DIR   = PROJECT_DIR / "datasets"
-TRAIN_DIR        = SPLIT_ROOT_DIR / "train"
-VAL_DIR          = SPLIT_ROOT_DIR / "val"
-TEST_DIR         = SPLIT_ROOT_DIR / "test"
-REPORTS_DIR      = SPLIT_ROOT_DIR / "reports"
+SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
+TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
+VAL_DIR        = SPLIT_ROOT_DIR / "val"
+TEST_DIR       = SPLIT_ROOT_DIR / "test"
+FOLDS_DIR      = SPLIT_ROOT_DIR / "folds"
+REPORTS_DIR    = SPLIT_ROOT_DIR / "reports"
 
 PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD"]
 
@@ -26,19 +27,30 @@ REQUIRED_COLUMNS = [
     "label",
 ]
 
-# ------------------- Split boundaries -------------------------------
-# Train : 2015-01-02 to 2021-12-31   (66.3 % of data - confirmed by EDA)
-# Val   : 2022-01-01 to 2023-12-31   (14.8 % of data - confirmed by EDA)
-# Test  : 2024-01-01 to 2025-12-31   (18.9 % of data - confirmed by EDA)
-# Purge : 15 rows dropped from the tail of train before val starts,
-#         and from the tail of val before test starts.
-#         Matches the maximum label horizon (horizon_secondary = 15) so
-#         forward-return labels at the boundary cannot see into the next split.
+#  Fixed split boundaries
+# Train : 2015-01-02 → 2021-12-31   (66.3 % of data — confirmed by EDA)
+# Val   : 2022-01-01 → 2023-12-31   (14.8 % of data — confirmed by EDA)
+# Test  : 2024-01-01 → 2025-12-31   (18.9 % of data — confirmed by EDA)
+# Purge : 15 rows dropped from the tail of each train slice before the next,
+#         slice begins.  Matches horizon_secondary = 15 in labels_fx_data.py,
+#         so no forward-return label at a boundary can see into the next split.
 
-DEFAULT_TRAIN_END  = "2021-12-31 23:59:59+00:00"
-DEFAULT_VAL_END    = "2023-12-31 23:59:59+00:00"
-DEFAULT_PURGE_ROWS = 15
+# Walk-forward folds (expanding window, inside train+val window only)
+# Fold 0 : train 2015–2018  |  purge  |  val 2019
+# Fold 1 : train 2015–2019  |  purge  |  val 2020
+# Fold 2 : train 2015–2020  |  purge  |  val 2021
+# Fold 3 : train 2015–2021  |  purge  |  val 2022
+# Fold 4 : train 2015–2022  |  purge  |  val 2023
+# Test set (2024–2025) is NEVER involved in fold construction.
 
+DEFAULT_TRAIN_END   = "2021-12-31 23:59:59+00:00"
+DEFAULT_VAL_END     = "2023-12-31 23:59:59+00:00"
+DEFAULT_PURGE_ROWS  = 15
+DEFAULT_N_FOLDS     = 5
+FOLD_FIRST_VAL_YEAR = 2019
+
+
+#  Helpers
 
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
@@ -51,25 +63,50 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
 
 
 def parse_timestamp(ts_str: str) -> pd.Timestamp:
-    # force UTC regardless of whether the string carries +00:00 or not
     ts = pd.Timestamp(ts_str)
     if ts.tzinfo is None:
         return ts.tz_localize("UTC")
     return ts.tz_convert("UTC")
 
 
+def ts_year_end(year: int) -> pd.Timestamp:
+    return parse_timestamp(f"{year}-12-31 23:59:59+00:00")
+
+
+def ts_year_start(year: int) -> pd.Timestamp:
+    return parse_timestamp(f"{year}-01-01 00:00:00+00:00")
+
+
+# CLI
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Split labeled FX datasets into deterministic train/val/test sets."
+        description=(
+            "Split labeled FX datasets into:\n"
+            "  1. Fixed train / val / test sets  (datasets/train|val|test/)\n"
+            "  2. Walk-forward expanding folds   (datasets/folds/fold_N/)\n"
+            "Existing outputs are skipped unless --force is passed."
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("--train-end",   type=str, default=DEFAULT_TRAIN_END)
-    parser.add_argument("--val-end",     type=str, default=DEFAULT_VAL_END)
+    parser.add_argument("--train-end",   type=str, default=DEFAULT_TRAIN_END,
+                        help="End of the fixed training window.")
+    parser.add_argument("--val-end",     type=str, default=DEFAULT_VAL_END,
+                        help="End of the fixed validation window.")
     parser.add_argument("--purge-rows",  type=int, default=DEFAULT_PURGE_ROWS,
-                        help="Rows to drop from the tail of train and val at each boundary.")
+                        help="Rows purged from every train tail before the next window.")
+    parser.add_argument("--n-folds",     type=int, default=DEFAULT_N_FOLDS,
+                        help="Number of walk-forward folds (default 5).")
     parser.add_argument("--force",       action="store_true",
-                        help="Recompute outputs even if they already exist.")
+                        help="Recompute and overwrite ALL outputs.")
+    parser.add_argument("--force-folds", action="store_true",
+                        help="Recompute fold outputs only (leaves fixed split untouched).")
+    parser.add_argument("--force-fixed", action="store_true",
+                        help="Recompute fixed split outputs only (leaves folds untouched).")
     return parser.parse_args()
 
+
+# Data loading
 
 def load_labeled_pair(pair: str) -> pd.DataFrame:
     """Load and validate one labeled pair parquet."""
@@ -90,61 +127,54 @@ def load_labeled_pair(pair: str) -> pd.DataFrame:
     return df
 
 
-def split_pair(
+#  Splitting primitives
+
+def apply_purge(df: pd.DataFrame, purge_rows: int) -> pd.DataFrame:
+    """Drop the last `purge_rows` rows from a DataFrame slice."""
+    if len(df) <= purge_rows:
+        return df.copy()
+    return df.iloc[: len(df) - purge_rows].copy()
+
+
+def slice_window(
     df: pd.DataFrame,
-    train_end: pd.Timestamp,
-    val_end: pd.Timestamp,
-    purge_rows: int,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    start: pd.Timestamp | None,
+    end: pd.Timestamp,
+) -> pd.DataFrame:
     """
-    Chronological split with purge gaps at both boundaries.
-
-    Timeline:
-      [─── train ───][purge][─── val ───][purge][─── test ───]
-
-    Purge removes the last `purge_rows` rows of train before val begins,
-    and the last `purge_rows` rows of val before test begins.
-    This prevents forward-return labels at the boundary from seeing
-    prices that belong to the next split.
+    Return rows where timestamp_utc is within (start, end].
+    If start is None, returns all rows up to end (from the beginning).
     """
-    raw_train = df.loc[df["timestamp_utc"] <= train_end].copy()
-    raw_val   = df.loc[(df["timestamp_utc"] > train_end) &
-                       (df["timestamp_utc"] <= val_end)].copy()
-    test_df   = df.loc[df["timestamp_utc"] > val_end].copy()
+    mask = df["timestamp_utc"] <= end
+    if start is not None:
+        mask &= df["timestamp_utc"] > start
+    return df.loc[mask].copy()
 
-    # drop purge tail from train and val
-    train_df = raw_train.iloc[: len(raw_train) - purge_rows].copy() if len(raw_train) > purge_rows else raw_train.copy()
-    val_df   = raw_val.iloc[: len(raw_val)   - purge_rows].copy() if len(raw_val)   > purge_rows else raw_val.copy()
 
-    return (
-        train_df.reset_index(drop=True),
-        val_df.reset_index(drop=True),
-        test_df.reset_index(drop=True),
-    )
-
+#  Statistics helpers
 
 def label_distribution(df: pd.DataFrame, prefix: str) -> dict:
     """Compute label counts and class percentages for one split."""
-    total = len(df)
-    vc = df["label"].value_counts(dropna=True)
-    long_n     = int(vc.get(1,  0))
-    flat_n     = int(vc.get(0,  0))
-    short_n    = int(vc.get(-1, 0))
-    na_n       = int(df["label"].isna().sum())
-    signal_n   = long_n + short_n
+    total   = len(df)
+    vc      = df["label"].value_counts(dropna=True)
+    long_n  = int(vc.get(1,  0))
+    flat_n  = int(vc.get(0,  0))
+    short_n = int(vc.get(-1, 0))
+    na_n    = int(df["label"].isna().sum())
+    signal_n = long_n + short_n
 
     return {
-        f"{prefix}_rows":          total,
-        f"{prefix}_long_n":        long_n,
-        f"{prefix}_flat_n":        flat_n,
-        f"{prefix}_short_n":       short_n,
-        f"{prefix}_na_n":          na_n,
-        f"{prefix}_signal_pct":    round(signal_n / total * 100, 2) if total else 0.0,
-        f"{prefix}_long_pct":      round(long_n   / total * 100, 2) if total else 0.0,
-        f"{prefix}_flat_pct":      round(flat_n   / total * 100, 2) if total else 0.0,
-        f"{prefix}_short_pct":     round(short_n  / total * 100, 2) if total else 0.0,
-        f"{prefix}_start":         df["timestamp_utc"].min() if total else pd.NaT,
-        f"{prefix}_end":           df["timestamp_utc"].max() if total else pd.NaT,
+        f"{prefix}_rows":       total,
+        f"{prefix}_long_n":     long_n,
+        f"{prefix}_flat_n":     flat_n,
+        f"{prefix}_short_n":    short_n,
+        f"{prefix}_na_n":       na_n,
+        f"{prefix}_signal_pct": round(signal_n / total * 100, 2) if total else 0.0,
+        f"{prefix}_long_pct":   round(long_n   / total * 100, 2) if total else 0.0,
+        f"{prefix}_flat_pct":   round(flat_n   / total * 100, 2) if total else 0.0,
+        f"{prefix}_short_pct":  round(short_n  / total * 100, 2) if total else 0.0,
+        f"{prefix}_start":      df["timestamp_utc"].min() if total else pd.NaT,
+        f"{prefix}_end":        df["timestamp_utc"].max() if total else pd.NaT,
     }
 
 
@@ -160,17 +190,63 @@ def session_distribution(df: pd.DataFrame, prefix: str) -> dict:
     }
 
 
-def build_split_summary(
+#  Fixed split
+
+def _fixed_outputs_exist(pair: str) -> bool:
+    return (
+        (TRAIN_DIR   / f"{pair}_train.parquet").exists()
+        and (VAL_DIR / f"{pair}_val.parquet").exists()
+        and (TEST_DIR / f"{pair}_test.parquet").exists()
+        and (REPORTS_DIR / f"{pair}_split_summary.csv").exists()
+    )
+
+
+def process_fixed_split(
     pair: str,
     full_df: pd.DataFrame,
-    train_df: pd.DataFrame,
-    val_df: pd.DataFrame,
-    test_df: pd.DataFrame,
     train_end: pd.Timestamp,
     val_end: pd.Timestamp,
     purge_rows: int,
+    force: bool,
 ) -> pd.DataFrame:
-    """Build one-row audit record for one pair."""
+    """
+    Produce the fixed train / val / test parquets for one pair.
+
+    Timeline:
+      [── train ──][purge][── val ──][purge][── test ──]
+
+    Returns the one-row summary DataFrame.
+    Skips writing if all four outputs exist and force=False.
+    """
+    summary_path = REPORTS_DIR / f"{pair}_split_summary.csv"
+
+    if _fixed_outputs_exist(pair) and not force:
+        print(f"  [fixed] {pair}: all outputs exist — skipping (use --force to recompute)")
+        return pd.read_csv(summary_path)
+
+    raw_train = slice_window(full_df, start=None,      end=train_end)
+    raw_val   = slice_window(full_df, start=train_end, end=val_end)
+    test_df   = slice_window(full_df, start=val_end,   end=full_df["timestamp_utc"].max())
+
+    train_df = apply_purge(raw_train, purge_rows).reset_index(drop=True)
+    val_df   = apply_purge(raw_val,   purge_rows).reset_index(drop=True)
+    test_df  = test_df.reset_index(drop=True)
+
+    for name, split in [("train", train_df), ("val", val_df), ("test", test_df)]:
+        if split.empty:
+            raise ValueError(
+                f"{pair}: fixed {name} split is empty — check date boundaries."
+            )
+
+    ensure_dir(TRAIN_DIR)
+    ensure_dir(VAL_DIR)
+    ensure_dir(TEST_DIR)
+    ensure_dir(REPORTS_DIR)
+
+    train_df.to_parquet(TRAIN_DIR  / f"{pair}_train.parquet", index=False)
+    val_df.to_parquet(  VAL_DIR    / f"{pair}_val.parquet",   index=False)
+    test_df.to_parquet( TEST_DIR   / f"{pair}_test.parquet",  index=False)
+
     record = {
         "pair":                 pair,
         "total_rows":           len(full_df),
@@ -183,64 +259,144 @@ def build_split_summary(
     record.update(label_distribution(test_df,  "test"))
     record.update(session_distribution(train_df, "train"))
     record.update(session_distribution(test_df,  "test"))
-    return pd.DataFrame([record])
-
-
-def build_manifest(summaries: list[pd.DataFrame]) -> pd.DataFrame:
-    """Concatenate all pair summaries into one global manifest."""
-    return pd.concat(summaries, ignore_index=True)
-
-
-def process_pair(
-    pair: str,
-    train_end: pd.Timestamp,
-    val_end: pd.Timestamp,
-    purge_rows: int,
-    force: bool,
-) -> pd.DataFrame:
-    """Split one pair and save artifacts. Returns the summary row."""
-    train_path   = TRAIN_DIR  / f"{pair}_train.parquet"
-    val_path     = VAL_DIR    / f"{pair}_val.parquet"
-    test_path    = TEST_DIR   / f"{pair}_test.parquet"
-    summary_path = REPORTS_DIR / f"{pair}_split_summary.csv"
-
-    if (train_path.exists() and val_path.exists() and
-            test_path.exists() and summary_path.exists() and not force):
-        return pd.read_csv(summary_path)
-
-    full_df = load_labeled_pair(pair)
-    train_df, val_df, test_df = split_pair(full_df, train_end, val_end, purge_rows)
-
-    for name, split in [("train", train_df), ("val", val_df), ("test", test_df)]:
-        if split.empty:
-            raise ValueError(
-                f"{pair}: {name} split is empty. "
-                f"Check date range and split boundaries."
-            )
-
-    summary_df = build_split_summary(
-        pair=pair,
-        full_df=full_df,
-        train_df=train_df,
-        val_df=val_df,
-        test_df=test_df,
-        train_end=train_end,
-        val_end=val_end,
-        purge_rows=purge_rows,
-    )
-
-    ensure_dir(TRAIN_DIR)
-    ensure_dir(VAL_DIR)
-    ensure_dir(TEST_DIR)
-    ensure_dir(REPORTS_DIR)
-
-    train_df.to_parquet(train_path, index=False)
-    val_df.to_parquet(val_path,     index=False)
-    test_df.to_parquet(test_path,   index=False)
+    summary_df = pd.DataFrame([record])
     save_csv(summary_df, summary_path)
 
+    print(
+        f"  [fixed] {pair}: train={len(train_df):,}  "
+        f"val={len(val_df):,}  test={len(test_df):,}  "
+        f"purge={purge_rows}"
+    )
     return summary_df
 
+
+#  Walk-forward folds
+
+def _fold_boundaries(n_folds: int, first_val_year: int) -> list[dict]:
+    """
+    Build boundary dicts for each fold.
+
+    Fold k:
+      train window : beginning of data  →  end of (first_val_year + k - 1)
+      val window   : start of (first_val_year + k)  →  end of (first_val_year + k)
+
+    Example with first_val_year=2019, n_folds=5:
+      Fold 0: train ≤ 2018-12-31,  val 2019-01-01 → 2019-12-31
+      Fold 1: train ≤ 2019-12-31,  val 2020-01-01 → 2020-12-31
+      Fold 2: train ≤ 2020-12-31,  val 2021-01-01 → 2021-12-31
+      Fold 3: train ≤ 2021-12-31,  val 2022-01-01 → 2022-12-31
+      Fold 4: train ≤ 2022-12-31,  val 2023-01-01 → 2023-12-31
+    """
+    folds = []
+    for k in range(n_folds):
+        val_year   = first_val_year + k
+        train_year = val_year - 1
+        folds.append({
+            "fold":      k,
+            "train_end": ts_year_end(train_year),
+            "val_start": ts_year_start(val_year),
+            "val_end":   ts_year_end(val_year),
+        })
+    return folds
+
+
+def _fold_outputs_exist(pair: str, fold: int) -> bool:
+    fold_dir = FOLDS_DIR / f"fold_{fold}"
+    return (
+        (fold_dir / f"{pair}_train.parquet").exists()
+        and (fold_dir / f"{pair}_val.parquet").exists()
+    )
+
+
+def process_folds(
+    pair: str,
+    full_df: pd.DataFrame,
+    n_folds: int,
+    purge_rows: int,
+    force: bool,
+) -> list[dict]:
+    """
+    Produce walk-forward fold parquets for one pair.
+
+    For each fold k:
+      - train  = all rows from start of data up to train_end, minus purge tail
+      - val    = rows within [val_start, val_end]
+      - test set is NEVER touched
+
+    Returns a list of one summary dict per fold.
+    """
+    boundaries   = _fold_boundaries(n_folds, FOLD_FIRST_VAL_YEAR)
+    fold_summaries = []
+
+    for b in boundaries:
+        fold      = b["fold"]
+        train_end = b["train_end"]
+        val_start = b["val_start"]
+        val_end   = b["val_end"]
+        fold_dir  = FOLDS_DIR / f"fold_{fold}"
+
+        if _fold_outputs_exist(pair, fold) and not force:
+            existing_train = pd.read_parquet(
+                fold_dir / f"{pair}_train.parquet",
+                columns=["timestamp_utc", "label", "session"],
+            )
+            existing_val = pd.read_parquet(
+                fold_dir / f"{pair}_val.parquet",
+                columns=["timestamp_utc", "label", "session"],
+            )
+            print(
+                f"  [fold {fold}] {pair}: outputs exist — skipping "
+                f"(train={len(existing_train):,}  val={len(existing_val):,})"
+            )
+            row = {
+                "pair": pair, "fold": fold,
+                "train_end": train_end, "val_start": val_start,
+                "val_end": val_end, "purge_rows": purge_rows,
+            }
+            row.update(label_distribution(existing_train, "train"))
+            row.update(label_distribution(existing_val,   "val"))
+            fold_summaries.append(row)
+            continue
+
+        raw_train = slice_window(full_df, start=None, end=train_end)
+        raw_val   = slice_window(
+            full_df,
+            start=val_start - pd.Timedelta(seconds=1),
+            end=val_end,
+        )
+
+        train_df = apply_purge(raw_train, purge_rows).reset_index(drop=True)
+        val_df   = raw_val.reset_index(drop=True)
+
+        if train_df.empty:
+            raise ValueError(f"{pair} fold {fold}: train slice is empty.")
+        if val_df.empty:
+            raise ValueError(f"{pair} fold {fold}: val slice is empty.")
+
+        ensure_dir(fold_dir)
+        train_df.to_parquet(fold_dir / f"{pair}_train.parquet", index=False)
+        val_df.to_parquet(  fold_dir / f"{pair}_val.parquet",   index=False)
+
+        row = {
+            "pair": pair, "fold": fold,
+            "train_end": train_end, "val_start": val_start,
+            "val_end": val_end, "purge_rows": purge_rows,
+        }
+        row.update(label_distribution(train_df, "train"))
+        row.update(label_distribution(val_df,   "val"))
+        fold_summaries.append(row)
+
+        print(
+            f"  [fold {fold}] {pair}: "
+            f"train ≤ {train_end.year}  ({len(train_df):,} rows)  "
+            f"val {val_start.year}  ({len(val_df):,} rows)  "
+            f"purge={purge_rows}"
+        )
+
+    return fold_summaries
+
+
+#  Main
 
 def main() -> None:
     args = parse_args()
@@ -248,6 +404,10 @@ def main() -> None:
     train_end  = parse_timestamp(args.train_end)
     val_end    = parse_timestamp(args.val_end)
     purge_rows = args.purge_rows
+    n_folds    = args.n_folds
+
+    force_fixed = args.force or args.force_fixed
+    force_folds = args.force or args.force_folds
 
     if train_end >= val_end:
         raise ValueError("--train-end must be earlier than --val-end.")
@@ -255,35 +415,79 @@ def main() -> None:
     ensure_dir(TRAIN_DIR)
     ensure_dir(VAL_DIR)
     ensure_dir(TEST_DIR)
+    ensure_dir(FOLDS_DIR)
     ensure_dir(REPORTS_DIR)
 
-    summaries: list[pd.DataFrame] = []
+    fixed_summaries: list[pd.DataFrame] = []
+    fold_rows:       list[dict]         = []
 
     for pair in PAIRS:
-        summary = process_pair(
-            pair=pair,
-            train_end=train_end,
-            val_end=val_end,
-            purge_rows=purge_rows,
-            force=args.force,
+        print(f"\n{'─'*60}")
+        print(f"Processing: {pair}")
+        print(f"{'─'*60}")
+
+        full_df = load_labeled_pair(pair)
+        print(
+            f"  Loaded {len(full_df):,} rows  "
+            f"({full_df['timestamp_utc'].min().date()} → "
+            f"{full_df['timestamp_utc'].max().date()})"
         )
-        summaries.append(summary)
 
-    manifest = build_manifest(summaries)
-    save_csv(manifest, REPORTS_DIR / "split_manifest.csv")
+        summary = process_fixed_split(
+            pair=pair, full_df=full_df,
+            train_end=train_end, val_end=val_end,
+            purge_rows=purge_rows, force=force_fixed,
+        )
+        fixed_summaries.append(summary)
 
-    print("Splitting complete.")
-    print(f"Train   ->  {TRAIN_DIR}")
-    print(f"Val     ->  {VAL_DIR}")
-    print(f"Test    ->  {TEST_DIR}")
-    print(f"Reports ->  {REPORTS_DIR}")
-    print(f"\nManifest preview:")
-    print(manifest[[
+        pair_fold_rows = process_folds(
+            pair=pair, full_df=full_df,
+            n_folds=n_folds, purge_rows=purge_rows,
+            force=force_folds,
+        )
+        fold_rows.extend(pair_fold_rows)
+
+    fixed_manifest = pd.concat(fixed_summaries, ignore_index=True)
+    save_csv(fixed_manifest, REPORTS_DIR / "split_manifest.csv")
+
+    fold_manifest = pd.DataFrame(fold_rows)
+    save_csv(fold_manifest, REPORTS_DIR / "fold_manifest.csv")
+
+    print(f"\n{'═'*60}")
+    print("SPLIT COMPLETE")
+    print(f"{'═'*60}")
+    print(f"Fixed split  ->  {TRAIN_DIR.parent}")
+    print(f"Folds        ->  {FOLDS_DIR}")
+    print(f"Reports      ->  {REPORTS_DIR}")
+
+    print("\n── Fixed split manifest ──")
+    preview_cols = [
         "pair", "total_rows",
         "train_rows", "val_rows", "test_rows",
         "train_signal_pct", "val_signal_pct", "test_signal_pct",
         "purge_rows",
-    ]].to_string(index=False))
+    ]
+    print(
+        fixed_manifest[[c for c in preview_cols if c in fixed_manifest.columns]]
+        .to_string(index=False)
+    )
+
+    if not fold_manifest.empty:
+        print("\n── Fold manifest (first 10 rows) ──")
+        fold_preview = [
+            "pair", "fold",
+            "train_rows", "train_end",
+            "val_rows",   "val_start",
+            "train_signal_pct", "val_signal_pct",
+        ]
+        print(
+            fold_manifest[[c for c in fold_preview if c in fold_manifest.columns]]
+            .head(10).to_string(index=False)
+        )
+
+    print("\nRun with --force        to recompute everything.")
+    print("Run with --force-folds  to recompute folds only.")
+    print("Run with --force-fixed  to recompute fixed split only.")
 
 
 if __name__ == "__main__":
