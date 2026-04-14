@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -57,7 +57,7 @@ SPREAD_TABLE: dict[str, float] = {
 }
 
 TRADING_DAYS = 252
-BARS_PER_DAY = 1440  # 1-minute data
+BARS_PER_DAY = 1440
 
 
 def _validate_inputs(signals: pd.Series, prices: pd.Series, pair: str) -> None:
@@ -79,8 +79,6 @@ def _compute_metrics(
     tp_pips:       Optional[float],
     sl_pips:       Optional[float],
 ) -> dict:
-    """Compute all 10 canonical metrics from return series."""
-
     ann_factor = np.sqrt(BARS_PER_DAY * TRADING_DAYS)
 
     def sharpe(r: pd.Series) -> float:
@@ -107,9 +105,6 @@ def _compute_metrics(
     downside_std = downside.std()
     sortino      = float((net_returns.mean() / downside_std) * ann_factor) if downside_std > 0 else 0.0
 
-    # - Trade-level stats (fixed) ----------------------------------------
-    # Build a list of (entry_bar, exit_bar, direction) by scanning
-    # position changes directly — avoids index.get_loc misuse.
     pos_arr  = positions.values
     px_arr   = prices.values
     pip      = PIP_SIZE[pair]
@@ -123,22 +118,18 @@ def _compute_metrics(
             i += 1
             continue
 
-        # Found a trade entry
         direction  = pos_arr[i]
         entry_px   = px_arr[i]
         entry_bar  = i
         tp_price   = (entry_px + direction * tp_pips * pip) if tp_pips else None
         sl_price   = (entry_px - direction * sl_pips * pip) if sl_pips else None
 
-        # Walk forward until exit condition
         j = i + 1
         exit_bar = n - 1
         while j < n:
-            # Position flipped or went flat
             if pos_arr[j] != direction:
                 exit_bar = j - 1
                 break
-            # TP hit
             if tp_price is not None:
                 if direction == 1 and px_arr[j] >= tp_price:
                     exit_bar = j
@@ -146,7 +137,6 @@ def _compute_metrics(
                 if direction == -1 and px_arr[j] <= tp_price:
                     exit_bar = j
                     break
-            # SL hit
             if sl_price is not None:
                 if direction == 1 and px_arr[j] <= sl_price:
                     exit_bar = j
@@ -156,8 +146,10 @@ def _compute_metrics(
                     break
             j += 1
 
-        trade_ret  = net_returns.iloc[entry_bar:exit_bar + 1].sum()
-        duration   = exit_bar - entry_bar + 1
+        trade_ret = float(
+            np.exp(net_returns.iloc[entry_bar:exit_bar + 1].sum()) - 1.0
+        )
+        duration  = exit_bar - entry_bar + 1
         durations.append(duration)
 
         if trade_ret > 0:
@@ -165,7 +157,6 @@ def _compute_metrics(
         else:
             losses.append(abs(trade_ret))
 
-        # Skip to after this trade
         i = exit_bar + 1
 
     n_trades       = len(wins) + len(losses)
@@ -204,37 +195,26 @@ def run_backtest(
     position_size: float = 1.0,
     fold_index:    Optional[int] = None,
 ) -> BacktestResult:
-    """
-    Run a single backtest for one pair/strategy combination.
-
-    signals:      integer series  1 long / -1 short / 0 flat
-    prices:       close price series aligned to signals
-    spread_pips:  override SPREAD_TABLE default if provided
-    tp_pips:      take-profit distance in pips (optional)
-    sl_pips:      stop-loss distance in pips (optional)
-    position_size: notional multiplier (default 1.0)
-    """
     _validate_inputs(signals, prices, pair)
 
     spread = spread_pips if spread_pips is not None else SPREAD_TABLE[pair]
     pip    = PIP_SIZE[pair]
 
-    # Shift signals by 1 bar — trade executes on next bar open (leakage guard)
-    pos = signals.shift(1).fillna(0).astype(float) * position_size
+    pos = signals.replace(0, np.nan).ffill().fillna(0).shift(1).fillna(0).astype(float) * position_size
 
     log_ret       = np.log(prices / prices.shift(1)).fillna(0.0)
     gross_returns = pos * log_ret
 
-    # Transaction cost on every position change (entry + exit each costs half-spread)
-    pos_diff        = pos.diff().fillna(pos.iloc[0]).abs()
-    cost_per_bar    = pos_diff * spread * pip
-    net_returns     = gross_returns - cost_per_bar
+    pos_change       = pos.diff().abs()
+    pos_change.iloc[0] = abs(pos.iloc[0])
+    cost_fraction    = (spread * pip) / prices
+    cost_per_bar     = pos_change * cost_fraction
+    net_returns      = gross_returns - cost_per_bar
 
     metrics = _compute_metrics(
         net_returns, gross_returns, pos, prices, pair, spread, tp_pips, sl_pips
     )
 
-    # Rolling 21-bar Sharpe (1-minute annualisation)
     roll_std    = net_returns.rolling(21).std().fillna(0)
     roll_mean   = net_returns.rolling(21).mean().fillna(0)
     rolling_sh  = (roll_mean / roll_std.replace(0, np.nan) * np.sqrt(BARS_PER_DAY * TRADING_DAYS)).fillna(0)
@@ -269,40 +249,49 @@ def run_backtest(
     )
 
 
-def run_cv_folds(
-    signals_df:  pd.DataFrame,
-    prices_df:   pd.DataFrame,
+def run_wf_folds(
     pair:        str,
     strategy:    str,
-    split:       str = "val",
     n_folds:     int = 5,
     spread_pips: Optional[float] = None,
     tp_pips:     Optional[float] = None,
     sl_pips:     Optional[float] = None,
 ) -> list[BacktestResult]:
-    """
-    Walk-forward cross-validation. Each fold is a contiguous equal-length slice.
-    Returns one BacktestResult per fold.
-    """
-    n         = len(signals_df)
-    fold_size = n // n_folds
-    results   = []
+    from backtest.strategies import get_strategy
+    strat   = get_strategy(strategy)
+    results = []
 
-    for i in range(n_folds):
-        start      = i * fold_size
-        end        = start + fold_size if i < n_folds - 1 else n
-        sig_fold   = signals_df.iloc[start:end].squeeze()
-        px_fold    = prices_df.iloc[start:end].squeeze()
+    for fold_idx in range(n_folds):
+        fold_dir  = PROJECT_DIR / "datasets" / "folds" / f"fold_{fold_idx}"
+        val_path  = fold_dir / f"{pair}_val.parquet"
+        if not val_path.exists():
+            raise FileNotFoundError(
+                f"Fold {fold_idx} val parquet missing: {val_path}\n"
+                f"Run scripts/split_fx_data.py first."
+            )
+        val_df = pd.read_parquet(val_path)
+        val_df["timestamp_utc"] = pd.to_datetime(val_df["timestamp_utc"], utc=True)
+        val_df = val_df.sort_values("timestamp_utc").reset_index(drop=True)
+
+        signals = strat.generate_signals(val_df)
+        signals = signals.reset_index(drop=True)
+        prices  = val_df["close"].reset_index(drop=True)
+
         r = run_backtest(
-            sig_fold, px_fold, pair, strategy, split,
+            signals=signals,
+            prices=prices,
+            pair=pair,
+            strategy=strategy,
+            split=f"fold_{fold_idx}",
             spread_pips=spread_pips,
             tp_pips=tp_pips,
             sl_pips=sl_pips,
-            fold_index=i,
+            fold_index=fold_idx,
         )
         results.append(r)
 
     return results
+
 
 if __name__ == "__main__":
     import random
@@ -311,7 +300,6 @@ if __name__ == "__main__":
 
     n  = 5000
     px = pd.Series(np.exp(np.random.randn(n).cumsum() * 0.001 + 7.0))
-    # Proper crossover-style signals — mostly flat, occasional trades
     sig = pd.Series(np.zeros(n, dtype=int))
     sig.iloc[100:300]  =  1
     sig.iloc[300:310]  =  0
@@ -332,6 +320,3 @@ if __name__ == "__main__":
     print(f"N Trades:      {result.n_trades}")
     print(f"Turnover:      {result.turnover:.4f}")
     print("Smoke test passed.")
-
-
-    # for commit

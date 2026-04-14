@@ -10,16 +10,18 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from backtest.engine import PAIRS, run_backtest, run_cv_folds
+from backtest.engine import PAIRS, run_backtest, run_wf_folds
 from backtest.report_generator import generate_report
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
-CLEANED_DIR    = PROJECT_DIR / "data" / "processed" / "cleaned"
+SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
+TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
+VAL_DIR        = SPLIT_ROOT_DIR / "val"
+TEST_DIR       = SPLIT_ROOT_DIR / "test"
+
 ALL_PAIRS      = PAIRS
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
 
-
-# - CLI ----------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -29,24 +31,22 @@ def parse_args() -> argparse.Namespace:
                         help="Pairs to run. Use 'all' for all 7 pairs.")
     parser.add_argument("--strategies",      nargs="+", default=["all"],
                         help="Strategies to run. Use 'all' for all registered strategies.")
-    parser.add_argument("--split",           choices=["val", "test"], default="val",
-                        help="Data split to use. Never touch 'test' during development.")
+    parser.add_argument("--split",           choices=["train", "val", "test"], default="val",
+                        help="Data split to use.")
     parser.add_argument("--folds",           type=int, default=0,
                         help="Number of walk-forward folds. 0 = single full-period run.")
     parser.add_argument("--spread-override", type=float, default=None,
-                        help="Override spread (pips) for all pairs. Uses SPREAD_TABLE if omitted.")
+                        help="Override spread (pips) for all pairs.")
     parser.add_argument("--tp-pips",         type=float, default=None,
-                        help="Take-profit in pips. Overrides strategy default. e.g. --tp-pips 10")
+                        help="Take-profit in pips.")
     parser.add_argument("--sl-pips",         type=float, default=None,
-                        help="Stop-loss in pips. Overrides strategy default. e.g. --sl-pips 5")
+                        help="Stop-loss in pips.")
     parser.add_argument("--out",             type=Path, default=None,
                         help="Custom output path for the HTML report.")
     parser.add_argument("--no-browser",      action="store_true",
                         help="Save report without opening it in the browser.")
     return parser.parse_args()
 
-
-# - Helpers ------------------------------------------------------------------
 
 def resolve_pairs(raw: list[str]) -> list[str]:
     if raw == ["all"]:
@@ -66,27 +66,18 @@ def resolve_strategies(raw: list[str]) -> list[str]:
     return raw
 
 
-def load_prices(pair: str) -> pd.DataFrame:
-    path = CLEANED_DIR / f"{pair}_2015_2025_clean.parquet"
+def load_split_data(pair: str, split: str) -> pd.DataFrame:
+    split_map = {"train": TRAIN_DIR, "val": VAL_DIR, "test": TEST_DIR}
+    path = split_map[split] / f"{pair}_{split}.parquet"
     if not path.exists():
         raise FileNotFoundError(
-            f"Cleaned data not found for {pair}.\n"
-            f"Expected: {path}\n"
-            f"Run scripts/clean_fx_data.py first."
+            f"Split parquet not found: {path}\n"
+            f"Run scripts/split_fx_data.py first."
         )
     df = pd.read_parquet(path)
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
-    df = df.sort_values("timestamp_utc").reset_index(drop=True)
-    return df
+    return df.sort_values("timestamp_utc").reset_index(drop=True)
 
-
-def split_data(df: pd.DataFrame, split: str) -> pd.DataFrame:
-    """Val: first 80%. Test: final 20% - only use when done with training."""
-    cut = int(len(df) * 0.8)
-    return df.iloc[:cut] if split == "val" else df.iloc[cut:]
-
-
-# - Terminal printing --------------------------------------------------------
 
 SEP  = "-" * 115
 SEP2 = "=" * 115
@@ -153,8 +144,6 @@ def print_summary(results: list) -> None:
     print()
 
 
-# - Main ---------------------------------------------------------------------
-
 def main() -> None:
     args = parse_args()
 
@@ -186,22 +175,11 @@ def main() -> None:
     completed = 0
 
     for pair in pairs:
-        df       = load_prices(pair)
-        df_split = split_data(df, args.split)
-        prices   = df_split["close"].reset_index(drop=True)
-
-        for strat_name in strategies:
-            strat   = get_strategy(strat_name)
-            signals = strat.generate_signals(df_split.reset_index(drop=True))
-            signals = signals.reset_index(drop=True)
-
-            if args.folds > 0:
-                fold_results = run_cv_folds(
-                    signals_df=signals.to_frame(),
-                    prices_df=prices.to_frame(),
+        if args.folds > 0:
+            for strat_name in strategies:
+                fold_results = run_wf_folds(
                     pair=pair,
-                    strategy=strat.name,
-                    split=args.split,
+                    strategy=strat_name,
                     n_folds=args.folds,
                     spread_pips=args.spread_override,
                     tp_pips=args.tp_pips,
@@ -209,7 +187,18 @@ def main() -> None:
                 )
                 results.extend(fold_results)
                 last = fold_results[-1]
-            else:
+                completed += 1
+                print_run(pair, strat_name, last)
+                sys.stdout.flush()
+        else:
+            df_split = load_split_data(pair, args.split)
+            prices   = df_split["close"].reset_index(drop=True)
+
+            for strat_name in strategies:
+                strat   = get_strategy(strat_name)
+                signals = strat.generate_signals(df_split.reset_index(drop=True))
+                signals = signals.reset_index(drop=True)
+
                 last = run_backtest(
                     signals=signals,
                     prices=prices,
@@ -221,10 +210,9 @@ def main() -> None:
                     sl_pips=args.sl_pips,
                 )
                 results.append(last)
-
-            completed += 1
-            print_run(pair, strat.name, last)
-            sys.stdout.flush()
+                completed += 1
+                print_run(pair, strat.name, last)
+                sys.stdout.flush()
 
     print_summary(results)
 
@@ -240,5 +228,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-    # for commit
