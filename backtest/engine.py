@@ -152,7 +152,7 @@ def _max_drawdown(equity: np.ndarray) -> float:
 
 def _rolling_sharpe(
     returns: np.ndarray,
-    window: int = 390,          # BUG FIX: was 21 (21 minutes). 390 = 1 trading day at 1-min
+    window: int = 390,          # 390 = 1 trading day at 1-min
 ) -> list[float]:
     """Rolling annualised Sharpe over `window` bars.
 
@@ -278,6 +278,11 @@ def run_backtest(
     open_trade  = None   # dict: entry_bar, entry_price, direction
     capital     = capital_initial
 
+    # BUG FIX: guard against capital_initial=0 to avoid ZeroDivisionError.
+    # When capital_initial is 0 we normalise equity against 1.0 so the
+    # equity curve is still meaningful (always == 1.0 since capital stays 0).
+    _equity_base = capital_initial if capital_initial != 0.0 else 1.0
+
     for i in range(1, n):
         cur_pos = pos_arr[i]
         price   = price_arr[i]
@@ -314,7 +319,7 @@ def run_backtest(
 
                 capital += pnl_dollars
                 bar_returns[i] = net_ret
-                equity_curve[i] = capital / capital_initial
+                equity_curve[i] = capital / _equity_base
                 dollar_curve[i] = capital
 
                 trade_log.append({
@@ -333,7 +338,7 @@ def run_backtest(
                 # mark-to-market
                 raw_ret = d * (price - prev_p) / prev_p
                 bar_returns[i] = raw_ret
-                equity_curve[i] = capital / capital_initial
+                equity_curve[i] = capital / _equity_base
                 dollar_curve[i] = capital
 
         else:
