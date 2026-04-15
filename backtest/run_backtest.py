@@ -99,6 +99,20 @@ def parse_args() -> argparse.Namespace:
         help="Resample bars before running. Any pandas offset string.\nExamples: 1H  4H  15min  1D",
     )
 
+    # direction mode
+    parser.add_argument(
+        "--direction",
+        choices=["long_short", "long_only", "short_only"],
+        default="long_short",
+        metavar="MODE",
+        help=(
+            "Which signal directions to trade.\n"
+            "long_short -- trade both longs and shorts (default)\n"
+            "long_only  -- suppress all short (-1) signals\n"
+            "short_only -- suppress all long  (+1) signals"
+        ),
+    )
+
     # output
     parser.add_argument(
         "--out", type=Path, default=None,
@@ -200,6 +214,7 @@ def print_banner(
     print(f"  Split        : {args.split.upper()}")
     print(f"  Folds        : {args.folds if args.folds > 0 else 'single run (no CV)'}")
     print(f"  Mode         : {mode_colour}{mode.upper()}{RESET}")
+    print(f"  Direction    : {args.direction}")
     print(f"  Capital      : {cap_str}")
     print(f"  Max Hold     : {max_hold_str}")
     print(f"  Session      : {session_str}")
@@ -268,7 +283,7 @@ def main() -> None:
     strategies = resolve_strategies(args.strategy)
     total_runs = len(pairs) * len(strategies)
 
-    # mode - simulation when user explicitly set a non-default capital
+    # mode -- simulation when user explicitly set a non-default capital
     mode = "simulation" if args.capital != 10_000.0 else "research"
 
     print_banner(pairs, strategies, args, total_runs, mode)
@@ -292,6 +307,7 @@ def main() -> None:
                     session=args.session,
                     entry_time=args.entry_time,
                     resample=args.resample,
+                    direction_mode=args.direction,   # fix: was missing
                 )
                 results.extend(fold_results)
                 completed += 1
@@ -330,6 +346,7 @@ def main() -> None:
                     session=args.session,
                     entry_time=args.entry_time,
                     resample=args.resample,
+                    direction_mode=args.direction,
                     mode=mode,
                 )
                 results.append(r)

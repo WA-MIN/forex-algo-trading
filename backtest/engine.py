@@ -1,548 +1,426 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib     import Path
-from typing      import List, Optional
+from abc import ABC, abstractmethod
 
-import numpy  as np
+import numpy as np
 import pandas as pd
 
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+class BaseStrategy(ABC):
+    """Abstract base -- all strategies must implement generate_signals."""
+
+    name: str = ""
+
+    @abstractmethod
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        """
+        Accepts a cleaned OHLCV DataFrame, returns an integer signal Series.
+        Values: 1 (long), -1 (short), 0 (flat). Same index as prices.
+
+        IMPORTANT: signals are crossover events, not continuous positions.
+        The engine converts these to held positions internally via forward-fill
+        in run_backtest (shift + hold). Do NOT forward-fill here.
+        """
+        ...
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.name})"
 
 
-@dataclass
-class BacktestResult:
-    #  identity
-    pair:           str
-    strategy:       str
-    split:          str
-    mode:           str = "research"   # "research" | "simulation"
+# Trend-following
 
-    #   time-series
-    equity:         List[float] = field(default_factory=list)
-    equity_dollars: List[float] = field(default_factory=list)
-    rolling_sharpe: List[float] = field(default_factory=list)
-    timestamps:     List[str]   = field(default_factory=list)   # ISO-8601
-
-    #  signals
-    signal_dist:    dict = field(default_factory=dict)
-
-    #  scalar metrics
-    net_sharpe:     float = 0.0
-    gross_sharpe:   float = 0.0
-    total_return:   float = 0.0
-    max_drawdown:   float = 0.0
-    calmar:         float = 0.0
-    win_rate:       float = 0.0
-    profit_factor:  float = 0.0
-    avg_trade_bars: float = 0.0
-    turnover:       float = 0.0
-    sortino:        float = 0.0
-    n_trades:       int   = 0
-    spread_pips:    float = 0.0
-
-    #  capital
-    capital_initial: float = 10_000.0
-    capital_final:   float = 10_000.0
-
-    #  trade log
-    trade_log: List[dict] = field(default_factory=list)
-    # Each entry: {entry_bar, exit_bar, direction, entry_price, exit_price,
-    #              pnl_pct, pnl_dollars, bars_held, exit_reason}
-
-    #  fold (CV only)
-    fold_index: Optional[int] = None
-
-    #  metrics dict property — consumed by report template
-    @property
-    def metrics(self) -> dict:
-        return {
-            "net_sharpe":      self.net_sharpe,
-            "gross_sharpe":    self.gross_sharpe,
-            "total_return":    self.total_return,
-            "max_drawdown":    self.max_drawdown,
-            "calmar":          self.calmar,
-            "win_rate":        self.win_rate,
-            "profit_factor":   self.profit_factor,
-            "avg_trade_bars":  self.avg_trade_bars,
-            "turnover":        self.turnover,
-            "sortino":         self.sortino,
-            "n_trades":        self.n_trades,
-            "capital_initial": self.capital_initial,
-            "capital_final":   self.capital_final,
-        }
-
-
-#  constants
-
-PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD"]
-
-PIP_SIZE: dict[str, float] = {
-    "EURUSD": 0.0001,
-    "GBPUSD": 0.0001,
-    "USDJPY": 0.01,
-    "USDCHF": 0.0001,
-    "USDCAD": 0.0001,
-    "AUDUSD": 0.0001,
-    "NZDUSD": 0.0001,
-}
-
-SPREAD_TABLE: dict[str, float] = {
-    "EURUSD": 1.0,
-    "GBPUSD": 1.2,
-    "USDJPY": 1.5,
-    "USDCHF": 1.5,
-    "USDCAD": 1.8,
-    "AUDUSD": 1.4,
-    "NZDUSD": 1.8,
-}
-
-# Session windows — inclusive start, exclusive end (UTC hour)
-SESSION_HOURS: dict[str, tuple[int, int]] = {
-    "london": (7,  16),
-    "ny":     (13, 22),
-    "tokyo":  (23,  8),   # wraps midnight
-    "sydney": (21,  6),   # wraps midnight
-}
-
-TRADING_DAYS = 252
-BARS_PER_DAY = 1440
-
-
-# validation
-
-def _validate_inputs(signals: pd.Series, prices: pd.Series, pair: str) -> None:
-    if pair not in PAIRS:
-        raise ValueError(f"Unknown pair '{pair}'. Supported: {PAIRS}")
-    if len(signals) != len(prices):
-        raise ValueError("signals and prices must have equal length.")
-    if signals.isna().any() or prices.isna().any():
-        raise ValueError("signals and prices must not contain NaN.")
-
-
-#  session mask
-
-def _session_mask(timestamps: list[str], session: str) -> pd.Series:
+class MACrossover(BaseStrategy):
     """
-    Returns a boolean Series — True where the bar falls inside the session.
-    Handles sessions that wrap midnight (tokyo, sydney).
+    Dual moving average crossover.
+
+    Long  signal (+1) when fast MA crosses UP through slow MA.
+    Short signal (-1) when fast MA crosses DOWN through slow MA.
+    Flat  signal ( 0) on all other bars and during warm-up.
+
+    Parameters
+    ----------
+    fast    : look-back for fast MA (default 20).
+    slow    : look-back for slow MA (default 50).
+    ma_type : 'ema' (default) or 'sma'.
     """
-    if session not in SESSION_HOURS:
+
+    name = "MACrossover"
+
+    def __init__(self, fast: int = 20, slow: int = 50, ma_type: str = "ema") -> None:
+        if fast >= slow:
+            raise ValueError(f"fast ({fast}) must be less than slow ({slow}).")
+        if ma_type not in ("ema", "sma"):
+            raise ValueError("ma_type must be 'ema' or 'sma'.")
+        self.fast = fast
+        self.slow = slow
+        self.ma_type = ma_type
+        self.name = f"MACrossover_f{fast}_s{slow}_{ma_type.upper()}"
+
+    def _ma(self, series: pd.Series, period: int) -> pd.Series:
+        if self.ma_type == "ema":
+            return series.ewm(span=period, adjust=False).mean()
+        return series.rolling(period).mean()
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        close = prices["close"]
+        fast_ma = self._ma(close, self.fast)
+        slow_ma = self._ma(close, self.slow)
+        fast_above = fast_ma > slow_ma
+
+        crossed_up = fast_above & ~fast_above.shift(1).fillna(False)
+        crossed_down = ~fast_above & fast_above.shift(1).fillna(True)
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[crossed_up] = 1
+        signals[crossed_down] = -1
+        signals.iloc[: self.slow - 1] = 0
+
+        return signals
+
+
+class MomentumStrategy(BaseStrategy):
+    """
+    Simple price momentum -- breakout of rolling high/low.
+
+    Long  signal (+1) when close breaks above the n-bar rolling high.
+    Short signal (-1) when close breaks below the n-bar rolling low.
+    Flat  signal ( 0) during warm-up and when neither condition is met.
+
+    Parameters
+    ----------
+    lookback : bars to look back for high/low comparison (default 60).
+    """
+
+    name = "Momentum"
+
+    def __init__(self, lookback: int = 60) -> None:
+        if lookback < 2:
+            raise ValueError("lookback must be >= 2.")
+        self.lookback = lookback
+        self.name = f"Momentum_lb{lookback}"
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        close = prices["close"]
+        rolling_high = close.shift(1).rolling(self.lookback).max()
+        rolling_low = close.shift(1).rolling(self.lookback).min()
+
+        broke_up = (close > rolling_high) & close.shift(1).le(rolling_high)
+        broke_down = (close < rolling_low) & close.shift(1).ge(rolling_low)
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[broke_up] = 1
+        signals[broke_down] = -1
+        signals.iloc[: self.lookback] = 0
+
+        return signals
+
+
+class DonchianBreakout(BaseStrategy):
+    """
+    Donchian channel breakout (Turtle Trading basis).
+
+    Long  signal (+1) when close breaks above the highest high of the last
+    `period` bars (excluding current bar).
+    Short signal (-1) when close breaks below the lowest low of the last
+    `period` bars (excluding current bar).
+    Flat  signal ( 0) during warm-up and when neither condition fires.
+
+    Uses pandas rolling max/min -- no external dependency required.
+
+    Parameters
+    ----------
+    period : channel look-back in bars (default 20).
+    """
+
+    name = "Donchian"
+
+    def __init__(self, period: int = 20) -> None:
+        if period < 2:
+            raise ValueError("period must be >= 2.")
+        self.period = period
+        self.name = f"Donchian_p{period}"
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        high = prices["high"] if "high" in prices.columns else prices["close"]
+        low = prices["low"] if "low" in prices.columns else prices["close"]
+
+        upper = high.shift(1).rolling(self.period).max()
+        lower = low.shift(1).rolling(self.period).min()
+
+        broke_up = prices["close"] > upper
+        broke_down = prices["close"] < lower
+
+        prev_broke_up = broke_up.shift(1).fillna(False)
+        prev_broke_down = broke_down.shift(1).fillna(False)
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[broke_up & ~prev_broke_up] = 1
+        signals[broke_down & ~prev_broke_down] = -1
+        signals.iloc[: self.period] = 0
+
+        return signals
+
+
+# Mean reversion
+
+class RSIMeanReversion(BaseStrategy):
+    """
+    RSI threshold crossover -- mean reversion.
+
+    Long  signal (+1) when RSI crosses UP through the oversold level.
+    Short signal (-1) when RSI crosses DOWN through the overbought level.
+    Flat  signal ( 0) on all other bars and during warm-up.
+
+    RSI is computed from scratch using standard Wilder smoothing
+    (equivalent to pandas ewm with alpha = 1/period).
+    No external TA library required.
+
+    Parameters
+    ----------
+    period     : RSI look-back (default 14).
+    oversold   : lower threshold -- long entry on cross up (default 30).
+    overbought : upper threshold -- short entry on cross down (default 70).
+    """
+
+    name = "RSI"
+
+    def __init__(
+        self,
+        period: int = 14,
+        oversold: float = 30.0,
+        overbought: float = 70.0,
+    ) -> None:
+        if period < 2:
+            raise ValueError("period must be >= 2.")
+        if oversold >= overbought:
+            raise ValueError("oversold must be less than overbought.")
+        self.period = period
+        self.oversold = oversold
+        self.overbought = overbought
+        self.name = f"RSI_p{period}_os{int(oversold)}_ob{int(overbought)}"
+
+    def _rsi(self, close: pd.Series) -> pd.Series:
+        delta = close.diff()
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        # Wilder smoothing -- alpha = 1 / period
+        avg_gain = gain.ewm(alpha=1.0 / self.period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1.0 / self.period, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+        return rsi.fillna(50.0)
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        rsi = self._rsi(prices["close"])
+
+        was_oversold = rsi.shift(1) <= self.oversold
+        was_overbought = rsi.shift(1) >= self.overbought
+        now_above_os = rsi > self.oversold
+        now_below_ob = rsi < self.overbought
+
+        crossed_up = was_oversold & now_above_os
+        crossed_down = was_overbought & now_below_ob
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[crossed_up] = 1
+        signals[crossed_down] = -1
+        signals.iloc[: self.period] = 0
+
+        return signals
+
+
+# Volatility breakout
+
+class BollingerBreakout(BaseStrategy):
+    """
+    Bollinger Band volatility breakout.
+
+    Long  signal (+1) when close crosses UP through the upper band.
+    Short signal (-1) when close crosses DOWN through the lower band.
+    Flat  signal ( 0) on all other bars and during warm-up.
+
+    Bands use a simple rolling mean +/- (std_dev * rolling std).
+    No external TA library required.
+
+    Parameters
+    ----------
+    period  : rolling window for mean and std (default 20).
+    std_dev : band width in standard deviations (default 2.0).
+    """
+
+    name = "BB"
+
+    def __init__(self, period: int = 20, std_dev: float = 2.0) -> None:
+        if period < 2:
+            raise ValueError("period must be >= 2.")
+        if std_dev <= 0:
+            raise ValueError("std_dev must be positive.")
+        self.period = period
+        self.std_dev = std_dev
+        self.name = f"BB_p{period}_std{str(std_dev).replace('.', '_')}"
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        close = prices["close"]
+        mid = close.rolling(self.period).mean()
+        sigma = close.rolling(self.period).std()
+        upper = mid + self.std_dev * sigma
+        lower = mid - self.std_dev * sigma
+
+        above_upper = close > upper
+        below_lower = close < lower
+
+        broke_up = above_upper & ~above_upper.shift(1).fillna(False)
+        broke_down = below_lower & ~below_lower.shift(1).fillna(False)
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[broke_up] = 1
+        signals[broke_down] = -1
+        signals.iloc[: self.period] = 0
+
+        return signals
+
+
+# Momentum oscillator
+
+class MACDSignalCross(BaseStrategy):
+    """
+    MACD line crosses signal line.
+
+    Long  signal (+1) when MACD line crosses UP through the signal line.
+    Short signal (-1) when MACD line crosses DOWN through the signal line.
+    Flat  signal ( 0) on all other bars and during warm-up.
+
+    MACD line   = EMA(fast) - EMA(slow)
+    Signal line = EMA(MACD line, signal_period)
+
+    No external TA library required -- all computed via pandas ewm.
+
+    Parameters
+    ----------
+    fast          : fast EMA period (default 12).
+    slow          : slow EMA period (default 26).
+    signal_period : signal line EMA period (default 9).
+    """
+
+    name = "MACD"
+
+    def __init__(
+        self,
+        fast: int = 12,
+        slow: int = 26,
+        signal_period: int = 9,
+    ) -> None:
+        if fast >= slow:
+            raise ValueError(f"fast ({fast}) must be less than slow ({slow}).")
+        if signal_period < 1:
+            raise ValueError("signal_period must be >= 1.")
+        self.fast = fast
+        self.slow = slow
+        self.signal_period = signal_period
+        self.name = f"MACD_f{fast}_s{slow}_sig{signal_period}"
+
+    def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
+        close = prices["close"]
+        ema_fast = close.ewm(span=self.fast, adjust=False).mean()
+        ema_slow = close.ewm(span=self.slow, adjust=False).mean()
+        macd_line = ema_fast - ema_slow
+        signal_line = macd_line.ewm(span=self.signal_period, adjust=False).mean()
+
+        macd_above = macd_line > signal_line
+
+        crossed_up = macd_above & ~macd_above.shift(1).fillna(False)
+        crossed_down = ~macd_above & macd_above.shift(1).fillna(True)
+
+        warmup = self.slow + self.signal_period - 1
+
+        signals = pd.Series(0, index=prices.index, dtype=int)
+        signals[crossed_up] = 1
+        signals[crossed_down] = -1
+        signals.iloc[: warmup] = 0
+
+        return signals
+
+
+# Registry
+
+STRATEGY_REGISTRY: dict[str, BaseStrategy] = {
+    # MA Crossover
+    "MACrossover_f20_s50_EMA": MACrossover(fast=20, slow=50, ma_type="ema"),
+    "MACrossover_f10_s30_EMA": MACrossover(fast=10, slow=30, ma_type="ema"),
+    "MACrossover_f20_s50_SMA": MACrossover(fast=20, slow=50, ma_type="sma"),
+
+    # Momentum
+    "Momentum_lb60": MomentumStrategy(lookback=60),
+    "Momentum_lb120": MomentumStrategy(lookback=120),
+
+    # Donchian channel breakout
+    "Donchian_p20": DonchianBreakout(period=20),
+    "Donchian_p55": DonchianBreakout(period=55),
+
+    # RSI mean reversion
+    "RSI_p14_os30_ob70": RSIMeanReversion(period=14, oversold=30, overbought=70),
+    "RSI_p7_os25_ob75": RSIMeanReversion(period=7, oversold=25, overbought=75),
+
+    # Bollinger Band breakout
+    "BB_p20_std2_0": BollingerBreakout(period=20, std_dev=2.0),
+    "BB_p14_std1_5": BollingerBreakout(period=14, std_dev=1.5),
+
+    # MACD signal cross
+    "MACD_f12_s26_sig9": MACDSignalCross(fast=12, slow=26, signal_period=9),
+    "MACD_f8_s21_sig5": MACDSignalCross(fast=8, slow=21, signal_period=5),
+}
+
+
+def get_strategy(name: str) -> BaseStrategy:
+    """Return a pre-instantiated strategy by registry name."""
+    if name not in STRATEGY_REGISTRY:
         raise ValueError(
-            f"Unknown session '{session}'. Valid: {list(SESSION_HOURS)}"
+            f"Unknown strategy '{name}'.\n"
+            f"Available: {list(STRATEGY_REGISTRY.keys())}"
         )
-
-    hours = pd.to_datetime(timestamps, utc=True).hour
-    start, end = SESSION_HOURS[session]
-
-    if start < end:
-        # normal window — e.g. london 07:00–16:00
-        mask = (hours >= start) & (hours < end)
-    else:
-        # wraps midnight — e.g. tokyo 23:00–08:00
-        mask = (hours >= start) | (hours < end)
-
-    return pd.Series(mask, dtype=bool)
+    return STRATEGY_REGISTRY[name]
 
 
-#  entry-time mask
-
-def _entry_time_mask(timestamps: list[str], entry_time: str) -> pd.Series:
-    """
-    Returns a boolean Series — True where the bar's UTC time >= entry_time.
-    Evaluated per-bar (not per-day), so it simply gates bars before the
-    specified hour:minute each day.
-    """
-    dt      = pd.to_datetime(timestamps, utc=True)
-    h, m    = map(int, entry_time.split(":"))
-    minutes = dt.hour * 60 + dt.minute
-    cutoff  = h * 60 + m
-    return pd.Series(minutes >= cutoff, dtype=bool)
-
-
-#  resampler
-
-def _resample(
-    signals:    pd.Series,
-    prices:     pd.Series,
-    timestamps: list[str],
-    freq:       str,
-) -> tuple[pd.Series, pd.Series, list[str]]:
-    """
-    Resamples signals (last), prices (last), and timestamps to `freq`.
-    Returns new (signals, prices, timestamps).
-    """
-    idx = pd.to_datetime(timestamps, utc=True)
-    df  = pd.DataFrame(
-        {"signal": signals.values, "price": prices.values},
-        index=idx,
-    )
-    rs  = df.resample(freq).last().dropna()
-
-    new_signals    = pd.Series(rs["signal"].values, dtype=float)
-    new_prices     = pd.Series(rs["price"].values,  dtype=float)
-    new_timestamps = rs.index.strftime("%Y-%m-%dT%H:%M:%SZ").tolist()
-
-    return new_signals, new_prices, new_timestamps
-
-
-#  metrics
-
-def _compute_metrics(
-    net_returns:   pd.Series,
-    gross_returns: pd.Series,
-    positions:     pd.Series,
-    prices:        pd.Series,
-    pair:          str,
-    spread_pips:   float,
-    tp_pips:       Optional[float],
-    sl_pips:       Optional[float],
-    max_hold_bars: Optional[int]   = None,
-    capital:       float           = 10_000.0,
-) -> dict:
-    ann_factor = np.sqrt(BARS_PER_DAY * TRADING_DAYS)
-
-    def sharpe(r: pd.Series) -> float:
-        std = r.std()
-        return float((r.mean() / std) * ann_factor) if (std > 0 and len(r) >= 2) else 0.0
-
-    net_sharpe   = sharpe(net_returns)
-    gross_sharpe = sharpe(gross_returns)
-
-    equity       = (1 + net_returns).cumprod()
-    total_return = float(equity.iloc[-1] - 1.0)
-
-    roll_max = equity.cummax()
-    drawdown = (equity - roll_max) / roll_max
-    max_dd   = float(drawdown.min())
-
-    n_bars     = len(net_returns)
-    ann_return = (
-        float((1 + total_return) ** (BARS_PER_DAY * TRADING_DAYS / n_bars) - 1)
-        if n_bars > 0 else 0.0
-    )
-    calmar = ann_return / abs(max_dd) if max_dd != 0 else 0.0
-
-    downside     = net_returns[net_returns < 0]
-    downside_std = downside.std()
-    sortino      = (
-        float((net_returns.mean() / downside_std) * ann_factor)
-        if downside_std > 0 else 0.0
-    )
-
-    pos_arr = positions.values
-    px_arr  = prices.values
-    pip     = PIP_SIZE[pair]
-
-    wins, losses, durations, trade_log = [], [], [], []
-    i = 0
-    n = len(pos_arr)
-
-    while i < n:
-        if pos_arr[i] == 0:
-            i += 1
-            continue
-
-        direction = int(pos_arr[i])
-        entry_px  = float(px_arr[i])
-        entry_bar = i
-        tp_price  = (entry_px + direction * tp_pips * pip) if tp_pips else None
-        sl_price  = (entry_px - direction * sl_pips * pip) if sl_pips else None
-
-        j           = i + 1
-        exit_bar    = n - 1
-        exit_reason = "end"
-
-        while j < n:
-            if pos_arr[j] != direction:
-                exit_bar    = j - 1
-                exit_reason = "signal"
-                break
-            if max_hold_bars is not None and (j - entry_bar) >= max_hold_bars:
-                exit_bar    = j
-                exit_reason = "max_hold"
-                break
-            if tp_price is not None:
-                if direction == 1 and px_arr[j] >= tp_price:
-                    exit_bar    = j
-                    exit_reason = "tp"
-                    break
-                if direction == -1 and px_arr[j] <= tp_price:
-                    exit_bar    = j
-                    exit_reason = "tp"
-                    break
-            if sl_price is not None:
-                if direction == 1 and px_arr[j] <= sl_price:
-                    exit_bar    = j
-                    exit_reason = "sl"
-                    break
-                if direction == -1 and px_arr[j] >= sl_price:
-                    exit_bar    = j
-                    exit_reason = "sl"
-                    break
-            j += 1
-
-        trade_net_ret = float(
-            np.exp(net_returns.iloc[entry_bar: exit_bar + 1].sum()) - 1.0
-        )
-        duration = exit_bar - entry_bar + 1
-        durations.append(duration)
-
-        exit_px     = float(px_arr[exit_bar])
-        pnl_dollars = capital * trade_net_ret
-
-        trade_log.append({
-            "entry_bar":   entry_bar,
-            "exit_bar":    exit_bar,
-            "direction":   direction,
-            "entry_price": round(entry_px, 6),
-            "exit_price":  round(exit_px,  6),
-            "pnl_pct":     round(trade_net_ret * 100, 4),
-            "pnl_dollars": round(pnl_dollars,  2),
-            "bars_held":   duration,
-            "exit_reason": exit_reason,
-        })
-
-        if trade_net_ret > 0:
-            wins.append(trade_net_ret)
-        else:
-            losses.append(abs(trade_net_ret))
-
-        i = exit_bar + 1
-
-    n_trades       = len(wins) + len(losses)
-    win_rate       = len(wins) / n_trades if n_trades > 0 else 0.0
-    profit_factor  = sum(wins) / sum(losses) if losses else (float("inf") if wins else 0.0)
-    avg_trade_bars = float(np.mean(durations)) if durations else 0.0
-
-    signal_changes     = int((positions.diff().fillna(0) != 0).sum())
-    turnover           = signal_changes / n_bars if n_bars > 0 else 0.0
-
-    equity_list         = equity.tolist()
-    equity_dollars_list = [round(capital * v, 2) for v in equity_list]
-    capital_final       = equity_dollars_list[-1] if equity_dollars_list else capital
-
-    return {
-        "net_sharpe":     net_sharpe,
-        "gross_sharpe":   gross_sharpe,
-        "total_return":   total_return,
-        "max_drawdown":   max_dd,
-        "calmar":         calmar,
-        "win_rate":       win_rate,
-        "profit_factor":  profit_factor,
-        "avg_trade_bars": avg_trade_bars,
-        "turnover":       turnover,
-        "sortino":        sortino,
-        "n_trades":       n_trades,
-        "equity":         equity_list,
-        "equity_dollars": equity_dollars_list,
-        "capital_final":  capital_final,
-        "trade_log":      trade_log,
-    }
-
-
-#  public run_backtest
-
-def run_backtest(
-    signals:         pd.Series,
-    prices:          pd.Series,
-    pair:            str,
-    strategy:        str,
-    split:           str             = "val",
-    spread_pips:     Optional[float] = None,
-    tp_pips:         Optional[float] = None,
-    sl_pips:         Optional[float] = None,
-    position_size:   float           = 1.0,
-    fold_index:      Optional[int]   = None,
-    capital_initial: float           = 10_000.0,
-    max_hold_bars:   Optional[int]   = None,
-    timestamps:      Optional[list]  = None,
-    session:         Optional[str]   = None,
-    entry_time:      Optional[str]   = None,   # "HH:MM" UTC
-    resample:        Optional[str]   = None,   # pandas offset e.g. "1H", "4H"
-    mode:            str             = "research",
-) -> BacktestResult:
-    _validate_inputs(signals, prices, pair)
-
-    ts = list(timestamps) if timestamps else []
-
-    #  resample to coarser timeframe before any filtering
-    if resample and ts:
-        signals, prices, ts = _resample(signals, prices, ts, resample)
-
-    #  session filter — zero out signals outside window
-    if session and ts:
-        in_session = _session_mask(ts, session)
-        signals    = signals.where(in_session.values, other=0)
-
-    #  entry-time filter — zero out bars before daily entry cutoff
-    if entry_time and ts:
-        after_entry = _entry_time_mask(ts, entry_time)
-        signals     = signals.where(after_entry.values, other=0)
-
-    #  position sizing + cost model
-    spread = spread_pips if spread_pips is not None else SPREAD_TABLE[pair]
-    pip    = PIP_SIZE[pair]
-
-    pos = (
-        signals.replace(0, np.nan)
-               .ffill()
-               .fillna(0)
-               .shift(1)
-               .fillna(0)
-               .astype(float) * position_size
-    )
-
-    log_ret       = np.log(prices / prices.shift(1)).fillna(0.0)
-    gross_returns = pos * log_ret
-
-    pos_change         = pos.diff().abs()
-    pos_change.iloc[0] = abs(pos.iloc[0])
-    cost_fraction      = (spread * pip) / prices
-    cost_per_bar       = pos_change * cost_fraction
-    net_returns        = gross_returns - cost_per_bar
-
-    metrics = _compute_metrics(
-        net_returns, gross_returns, pos, prices, pair,
-        spread, tp_pips, sl_pips, max_hold_bars, capital_initial,
-    )
-
-    roll_std  = net_returns.rolling(21).std().fillna(0)
-    roll_mean = net_returns.rolling(21).mean().fillna(0)
-    rolling_sh = (
-        roll_mean
-        / roll_std.replace(0, np.nan)
-        * np.sqrt(BARS_PER_DAY * TRADING_DAYS)
-    ).fillna(0)
-
-    sig_counts  = signals.value_counts().to_dict()
-    signal_dist = {
-        "Long":  int(sig_counts.get(1,  0)),
-        "Short": int(sig_counts.get(-1, 0)),
-        "Flat":  int(sig_counts.get(0,  0)),
-    }
-
-    return BacktestResult(
-        pair             = pair,
-        strategy         = strategy,
-        split            = split,
-        mode             = mode,
-        fold_index       = fold_index,
-        equity           = metrics["equity"],
-        equity_dollars   = metrics["equity_dollars"],
-        rolling_sharpe   = rolling_sh.tolist(),
-        timestamps       = ts,
-        signal_dist      = signal_dist,
-        net_sharpe       = metrics["net_sharpe"],
-        gross_sharpe     = metrics["gross_sharpe"],
-        total_return     = metrics["total_return"],
-        max_drawdown     = metrics["max_drawdown"],
-        calmar           = metrics["calmar"],
-        win_rate         = metrics["win_rate"],
-        profit_factor    = metrics["profit_factor"],
-        avg_trade_bars   = metrics["avg_trade_bars"],
-        turnover         = metrics["turnover"],
-        sortino          = metrics["sortino"],
-        n_trades         = metrics["n_trades"],
-        spread_pips      = spread,
-        capital_initial  = capital_initial,
-        capital_final    = metrics["capital_final"],
-        trade_log        = metrics["trade_log"],
-    )
-
-
-#  walk-forward CV
-
-def run_wf_folds(
-    pair:        str,
-    strategy:    str,
-    n_folds:     int             = 5,
-    spread_pips: Optional[float] = None,
-    tp_pips:     Optional[float] = None,
-    sl_pips:     Optional[float] = None,
-    session:     Optional[str]   = None,
-    entry_time:  Optional[str]   = None,
-    resample:    Optional[str]   = None,
-) -> list[BacktestResult]:
-    from backtest.strategies import get_strategy
-    strat   = get_strategy(strategy)
-    results = []
-
-    for fold_idx in range(n_folds):
-        fold_dir = PROJECT_DIR / "datasets" / "folds" / f"fold_{fold_idx}"
-        val_path = fold_dir / f"{pair}_val.parquet"
-        if not val_path.exists():
-            raise FileNotFoundError(
-                f"Fold {fold_idx} val parquet missing: {val_path}\n"
-                f"Run scripts/split_fx_data.py first."
-            )
-        val_df = pd.read_parquet(val_path)
-        val_df["timestamp_utc"] = pd.to_datetime(val_df["timestamp_utc"], utc=True)
-        val_df = val_df.sort_values("timestamp_utc").reset_index(drop=True)
-
-        signals    = strat.generate_signals(val_df).reset_index(drop=True)
-        prices     = val_df["close"].reset_index(drop=True)
-        timestamps = (
-            val_df["timestamp_utc"]
-            .dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-            .tolist()
-            if "timestamp_utc" in val_df.columns else []
-        )
-
-        r = run_backtest(
-            signals     = signals,
-            prices      = prices,
-            pair        = pair,
-            strategy    = strategy,
-            split       = f"fold_{fold_idx}",
-            spread_pips = spread_pips,
-            tp_pips     = tp_pips,
-            sl_pips     = sl_pips,
-            fold_index  = fold_idx,
-            timestamps  = timestamps,
-            session     = session,
-            entry_time  = entry_time,
-            resample    = resample,
-        )
-        results.append(r)
-
-    return results
-
-
-#  smoke test
+# Smoke test
 
 if __name__ == "__main__":
-    import random
-    random.seed(42)
-    np.random.seed(42)
+    n = 2000
+    np.random.seed(0)
 
-    n   = 5000
-    px  = pd.Series(np.exp(np.random.randn(n).cumsum() * 0.001 + 7.0))
-    sig = pd.Series(np.zeros(n, dtype=int))
-    sig.iloc[100:300] =  1
-    sig.iloc[300:310] =  0
-    sig.iloc[310:600] = -1
-    sig.iloc[600:610] =  0
-    sig.iloc[610:900] =  1
+    close = pd.Series(np.exp(np.random.randn(n).cumsum() * 0.001 + 7.0))
+    high = close * (1 + np.abs(np.random.randn(n)) * 0.0005)
+    low = close * (1 - np.abs(np.random.randn(n)) * 0.0005)
+    prices = pd.DataFrame({"close": close, "high": high, "low": low})
 
-    # smoke with session + entry_time (no timestamps so filters silently skip)
-    result = run_backtest(
-        sig, px,
-        pair            = "EURUSD",
-        strategy        = "SmokeTest",
-        split           = "val",
-        capital_initial = 10_000.0,
-        session         = "london",
-        entry_time      = "09:00",
-    )
+    print("Running strategy smoke tests...")
+    print("-" * 80)
 
-    print(f"Pair:           {result.pair}")
-    print(f"Mode:           {result.mode}")
-    print(f"Net Sharpe:     {result.net_sharpe:.4f}")
-    print(f"Total Return:   {result.total_return:.4f}")
-    print(f"Max Drawdown:   {result.max_drawdown:.4f}")
-    print(f"Capital Final:  ${result.capital_final:,.2f}")
-    print(f"N Trades:       {result.n_trades}")
-    print(f"Trade Log rows: {len(result.trade_log)}")
-    print(f"Metrics dict:   {list(result.metrics.keys())}")
-    print("Smoke test passed.")
+    for key, strat in STRATEGY_REGISTRY.items():
+        sigs = strat.generate_signals(prices)
+
+        assert sigs.isin([-1, 0, 1]).all(), f"{key}: invalid signal values"
+        assert len(sigs) == n, f"{key}: length mismatch"
+        assert not sigs.isna().any(), f"{key}: NaN in signals"
+
+        counts = sigs.value_counts().to_dict()
+        n_long = counts.get(1, 0)
+        n_short = counts.get(-1, 0)
+        n_flat = counts.get(0, 0)
+        flat_pct = n_flat / n * 100
+        n_crossovers = n_long + n_short
+
+        print(
+            f"  {key:<35} "
+            f"Long: {n_long:>4}  "
+            f"Short: {n_short:>4}  "
+            f"Flat: {n_flat:>5} ({flat_pct:.1f}%)  "
+            f"Events: {n_crossovers}"
+        )
+
+        assert flat_pct > 80, (
+            f"{key}: only {flat_pct:.1f}% flat bars -- "
+            f"likely outputting positions not crossover events"
+        )
+
+    print("-" * 80)
+    print("All strategy smoke tests passed.")
