@@ -44,7 +44,6 @@
     min-height: 100vh;
   }
 
-  /* topbar */
   .topbar {
     position: sticky;
     top: 0;
@@ -79,7 +78,6 @@
     font-family: var(--font-mono);
   }
 
-  /* badges */
   .badge {
     display: inline-flex;
     align-items: center;
@@ -98,7 +96,6 @@
   .badge-yellow { background: var(--yellow-dim); color: var(--yellow); }
   .badge-purple { background: var(--purple-dim); color: var(--purple); }
 
-  /* layout */
   .page { max-width: 1400px; margin: 0 auto; padding: 24px 24px 64px; }
 
   .section { margin-bottom: 32px; }
@@ -114,7 +111,6 @@
     border-bottom: 1px solid var(--border);
   }
 
-  /* meta strip */
   .meta-strip {
     display: flex;
     flex-wrap: wrap;
@@ -137,7 +133,6 @@
 
   .meta-chip strong { color: var(--text); font-weight: 600; }
 
-  /* kpi row */
   .kpi-row {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -179,7 +174,6 @@
   .neutral { color: var(--text); }
   .warning { color: var(--yellow); }
 
-  /* results table */
   .table-wrap {
     overflow-x: auto;
     border: 1px solid var(--border);
@@ -242,7 +236,6 @@
     font-weight: 500;
   }
 
-  /* filters */
   .filters {
     display: flex;
     flex-wrap: wrap;
@@ -270,7 +263,6 @@
     color: var(--text-muted);
   }
 
-  /* charts grid */
   .charts-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
@@ -298,7 +290,6 @@
 
   .chart-wrap { position: relative; height: 220px; }
 
-  /* trade log */
   .trade-log-wrap {
     overflow-x: auto;
     max-height: 480px;
@@ -318,7 +309,6 @@
   td.win { color: var(--green); }
   td.loss { color: var(--red); }
 
-  /* empty state */
   .empty {
     text-align: center;
     padding: 48px 24px;
@@ -326,7 +316,6 @@
     font-size: 13px;
   }
 
-  /* tab bar */
   .tab-bar {
     display: flex;
     gap: 2px;
@@ -348,7 +337,6 @@
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 
-  /* scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -374,16 +362,13 @@
 
 <div class="page">
 
-  <!-- meta strip -->
   <div class="meta-strip" id="meta-strip"></div>
 
-  <!-- KPI row -->
   <div class="section">
     <div class="section-title">Summary</div>
     <div class="kpi-row" id="kpi-row"></div>
   </div>
 
-  <!-- results table -->
   <div class="section">
     <div class="section-title">Results</div>
     <div class="filters">
@@ -416,7 +401,6 @@
     </div>
   </div>
 
-  <!-- chart tabs -->
   <div class="section">
     <div class="section-title">Charts</div>
     <div class="tab-bar">
@@ -429,7 +413,6 @@
     <div id="tab-signals" class="charts-grid" style="display:none"></div>
   </div>
 
-  <!-- trade log -->
   <div class="section">
     <div class="section-title">Trade Log</div>
     <div class="filters">
@@ -461,10 +444,26 @@
     </div>
   </div>
 
-</div><!-- /page -->
+</div>
 
 <script>
 const DATA = __DATA_JSON__;
+
+// ---------------------------------------------------------------------------
+// FIX: register Chart.js decimation plugin so large time-series render
+// correctly. Without this, datasets with > ~50k points silently produce
+// a blank canvas. LTTB (Largest-Triangle-Three-Buckets) down-samples to
+// 500 points while preserving the visual shape of the curve.
+// ---------------------------------------------------------------------------
+Chart.register(Chart.registry.plugins.get('decimation') ||
+  { id: 'decimation' });
+
+const DECIMATION_OPTS = {
+  enabled: true,
+  algorithm: 'lttb',
+  samples: 500,
+  threshold: 500,
+};
 
 // helpers
 
@@ -496,14 +495,11 @@ function dirBadgeClass(dm) {
   return "badge-blue";
 }
 
-// chart colour palette -- cycles across results
 const PALETTE = [
   "#3b82f6", "#22c55e", "#f59e0b", "#a855f7",
   "#06b6d4", "#ef4444", "#84cc16", "#ec4899",
   "#14b8a6", "#f97316", "#6366f1", "#10b981",
 ];
-
-// topbar
 
 const meta = DATA.meta;
 
@@ -516,8 +512,6 @@ document.getElementById("mode-badge").innerHTML =
 
 document.getElementById("direction-badge").innerHTML =
   `<span class="badge ${dirBadgeClass(meta.direction_mode)}">${dirLabel(meta.direction_mode)}</span>`;
-
-// meta strip
 
 const ms = document.getElementById("meta-strip");
 
@@ -535,8 +529,6 @@ ms.innerHTML = [
            (meta.capital_final_avg ? " -> " + fmt.dollar(meta.capital_final_avg) : ""))
     : "",
 ].join("");
-
-// KPI row
 
 const sharpes = DATA.results.map(r => r.metrics.net_sharpe);
 const returns = DATA.results.map(r => r.metrics.total_return);
@@ -575,8 +567,6 @@ document.getElementById("kpi-row").innerHTML = [
       "negative",
       DATA.results[worstIdx].pair + " / " + DATA.results[worstIdx].strategy.slice(0, 20)),
 ].join("");
-
-// results table
 
 let sortCol = 3;
 let sortAsc = false;
@@ -663,8 +653,6 @@ function selectRow(i) {
 
 renderTable(sortRows(tableData));
 
-// charts
-
 const charts = {};
 
 function makeLabels(r) {
@@ -674,12 +662,34 @@ function makeLabels(r) {
   return r.equity.map((_, i) => i.toString());
 }
 
+// ---------------------------------------------------------------------------
+// FIX: Chart.js decimation requires the x-axis to use a 'time' or
+// 'linear' scale with numeric x values when using the built-in plugin.
+// For string labels we use a simpler approach: pre-thin the data in JS
+// before passing it to Chart.js, keeping at most MAX_PTS points.
+// ---------------------------------------------------------------------------
+const MAX_PTS = 800;
+
+function thinData(labels, data) {
+  if (data.length <= MAX_PTS) return { labels, data };
+  const step = data.length / MAX_PTS;
+  const tl = [], td = [];
+  for (let i = 0; i < MAX_PTS; i++) {
+    const idx = Math.round(i * step);
+    tl.push(labels[idx]);
+    td.push(data[idx]);
+  }
+  // always include the last point so the curve ends at the right value
+  tl.push(labels[labels.length - 1]);
+  td.push(data[data.length - 1]);
+  return { labels: tl, data: td };
+}
+
 function buildEquityCharts() {
   const grid = document.getElementById("tab-equity");
   grid.innerHTML = "";
   DATA.results.forEach((r, i) => {
     const id = "eq-" + i;
-    const col = PALETTE[i % PALETTE.length];
     const dm = dirLabel(r.direction_mode);
     grid.innerHTML += `
       <div class="chart-card" id="card-eq-${i}">
@@ -692,8 +702,9 @@ function buildEquityCharts() {
   });
 
   DATA.results.forEach((r, i) => {
-    const labels = makeLabels(r);
-    const data = r.equity.map(v => +((v - 1) * 100).toFixed(4));
+    const rawLabels = makeLabels(r);
+    const rawData   = r.equity.map(v => +((v - 1) * 100).toFixed(4));
+    const { labels, data } = thinData(rawLabels, rawData);
     const col = PALETTE[i % PALETTE.length];
     charts["eq-" + i] = new Chart(document.getElementById("eq-" + i), {
       type: "line",
@@ -748,20 +759,20 @@ function buildSharpeCharts() {
   grid.innerHTML = "";
   DATA.results.forEach((r, i) => {
     const id = "sh-" + i;
-    const col = PALETTE[i % PALETTE.length];
     grid.innerHTML += `
       <div class="chart-card">
         <div class="chart-card-title">
           <span>${r.pair} / ${r.strategy}</span>
-          <span style="color:var(--text-muted);font-size:11px">21-bar rolling Sharpe</span>
+          <span style="color:var(--text-muted);font-size:11px">390-bar rolling Sharpe (1-day)</span>
         </div>
         <div class="chart-wrap"><canvas id="${id}"></canvas></div>
       </div>`;
   });
 
   DATA.results.forEach((r, i) => {
-    const labels = makeLabels(r);
-    const data = r.rolling_sharpe.map(v => +v.toFixed(4));
+    const rawLabels = makeLabels(r);
+    const rawData   = r.rolling_sharpe.map(v => +v.toFixed(4));
+    const { labels, data } = thinData(rawLabels, rawData);
     const col = PALETTE[i % PALETTE.length];
     charts["sh-" + i] = new Chart(document.getElementById("sh-" + i), {
       type: "line",
@@ -860,7 +871,6 @@ function highlightCharts(i) {
   if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-// tab switching
 function switchTab(name) {
   ["equity", "sharpe", "signals"].forEach(t => {
     document.getElementById("tab-" + t).style.display = (t === name) ? "grid" : "none";
@@ -873,8 +883,6 @@ function switchTab(name) {
 buildEquityCharts();
 buildSharpeCharts();
 buildSignalCharts();
-
-// trade log
 
 const allTrades = DATA.results.flatMap(r => r.trade_log);
 

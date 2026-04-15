@@ -115,7 +115,11 @@ class BacktestResult:
 # ---------------------------------------------------------------------------
 
 def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """Annualised Sharpe from a bar-level return array (1-min default)."""
+    """Annualised Sharpe from a bar-level return array (1-min default).
+
+    NOTE: always pass the *full* bar_returns array (including zero bars).
+    Passing only non-zero bars inflates Sharpe by shrinking the denominator.
+    """
     if len(returns) < 2:
         return 0.0
     std = returns.std()
@@ -125,6 +129,10 @@ def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
 
 
 def _sortino(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
+    """Annualised Sortino from a bar-level return array.
+
+    NOTE: always pass the *full* bar_returns array (including zero bars).
+    """
     downside = returns[returns < 0]
     if len(downside) < 2:
         return 0.0
@@ -142,7 +150,15 @@ def _max_drawdown(equity: np.ndarray) -> float:
     return float(dd.min())
 
 
-def _rolling_sharpe(returns: np.ndarray, window: int = 21) -> list[float]:
+def _rolling_sharpe(
+    returns: np.ndarray,
+    window: int = 390,          # BUG FIX: was 21 (21 minutes). 390 = 1 trading day at 1-min
+) -> list[float]:
+    """Rolling annualised Sharpe over `window` bars.
+
+    window=390  -> 1 trading day  (default, 1-min data)
+    window=1950 -> 1 trading week (5 days x 390 min)
+    """
     out = []
     for i in range(len(returns)):
         w = returns[max(0, i - window + 1): i + 1]
@@ -358,14 +374,19 @@ def run_backtest(
     # -- compute metrics -----------------------------------------------------
     eq        = equity_curve
     ret_arr   = bar_returns
-    nonzero   = ret_arr[ret_arr != 0]
 
     total_return = float(eq[-1] - 1.0)
     mdd          = _max_drawdown(eq)
-    net_sh       = _sharpe(nonzero)
-    gross_sh     = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
-    sortino_v    = _sortino(nonzero)
-    calmar_v     = (total_return / abs(mdd)) if mdd < 0 else 0.0
+
+    # BUG FIX: use full ret_arr (all bars), NOT nonzero-only.
+    # Using only non-zero bars shrinks std artificially -> inflated Sharpe/Sortino.
+    net_sh    = _sharpe(ret_arr)
+    sortino_v = _sortino(ret_arr)
+
+    # gross_sharpe: only positive-return bars (unchanged — measures raw upside)
+    gross_sh  = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
+
+    calmar_v  = (total_return / abs(mdd)) if mdd < 0 else 0.0
 
     wins  = [t for t in trade_log if t["pnl_pct"] >= 0]
     losses = [t for t in trade_log if t["pnl_pct"] < 0]
@@ -387,7 +408,8 @@ def run_backtest(
         "Flat":  int(sig_counts.get(0, 0)),
     }
 
-    roll_sh = _rolling_sharpe(ret_arr)
+    # BUG FIX: window raised from 21 to 390 (1 trading day at 1-min resolution)
+    roll_sh = _rolling_sharpe(ret_arr, window=390)
 
     ts_list = list(timestamps) if timestamps else []
 
