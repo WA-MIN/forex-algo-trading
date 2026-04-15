@@ -16,6 +16,7 @@ from backtest.report_generator import generate_report
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
 SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
+FULL_DIR       = SPLIT_ROOT_DIR             # datasets/{pair}.parquet  <- full history
 TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
 VAL_DIR        = SPLIT_ROOT_DIR / "val"
 TEST_DIR       = SPLIT_ROOT_DIR / "test"
@@ -23,12 +24,12 @@ TEST_DIR       = SPLIT_ROOT_DIR / "test"
 ALL_PAIRS      = PAIRS
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
 
-# Named splits the user can pass to --split
-NAMED_SPLITS = ["train", "val", "test"] + [f"fold_{i}" for i in range(5)]
+# Named splits the user can pass to --split.
+# 'full' = entire cleaned history, no partitioning.
+# Use 'full' for rule-based strategies that have no fittable parameters.
+NAMED_SPLITS = ["full", "train", "val", "test"] + [f"fold_{i}" for i in range(5)]
 
 # Session hour windows (UTC): start inclusive, end exclusive
-#   asia    = Tokyo + Sydney overlap
-#   overlap = London / NY overlap
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
     "london":  (7,  16),
     "ny":      (13, 22),
@@ -61,13 +62,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--split",
         choices=NAMED_SPLITS,
-        default="val",
+        default="full",
         metavar="SPLIT",
         help=(
             "Data split to run on.\n"
-            "Named splits : train | val | test\n"
-            "WF fold      : fold_0 .. fold_4  (loads train parquet, selects Nth window)\n"
-            "Default      : val"
+            "  full   -- entire cleaned history (DEFAULT, use for rule-based strategies)\n"
+            "  train  -- training partition\n"
+            "  val    -- validation partition\n"
+            "  test   -- held-out test partition\n"
+            "  fold_N -- walk-forward fold N (0-4) within the train partition\n"
+            "\n"
+            "Rule-based strategies (MA crossover, Donchian, etc.) have no\n"
+            "fittable parameters, so 'full' is always the correct choice.\n"
+            "Use train/val/test only when evaluating ML-based strategies."
         ),
     )
 
@@ -79,7 +86,8 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Start of the analysis window (inclusive).\n"
             "Accepts ISO 8601: '2022-01-01' or '2022-01-01T00:00:00'.\n"
-            "Applied AFTER loading the split parquet."
+            "Applied AFTER loading the split parquet.\n"
+            "Tip: run without --from/--to first to see the available date range."
         ),
     )
     parser.add_argument(
@@ -206,9 +214,16 @@ def resolve_strategies(raw: list[str]) -> list[str]:
 def resolve_split_path(split: str, pair: str) -> Path:
     """
     Returns the parquet path for a given split/pair combination.
-    fold_0..fold_4 all load the train parquet (the fold slice is cut at runtime).
+
+    full      -> datasets/{pair}.parquet          (entire cleaned history)
+    train     -> datasets/train/{pair}_train.parquet
+    val       -> datasets/val/{pair}_val.parquet
+    test      -> datasets/test/{pair}_test.parquet
+    fold_0..4 -> datasets/train/{pair}_train.parquet  (fold slice cut at runtime)
     """
-    if split in ("train",) or split.startswith("fold_"):
+    if split == "full":
+        return FULL_DIR / f"{pair}.parquet"
+    if split == "train" or split.startswith("fold_"):
         return TRAIN_DIR / f"{pair}_train.parquet"
     if split == "val":
         return VAL_DIR   / f"{pair}_val.parquet"
@@ -232,12 +247,20 @@ def load_split_data(
       1. For fold_N splits: slices the train data into 5 equal windows and
          returns window N (0-indexed).
       2. Applies --from / --to date filters on timestamp_utc.
+
+    Use split='full' for rule-based strategies -- it loads the entire
+    cleaned history without any train/val/test partitioning.
     """
     path = resolve_split_path(split, pair)
     if not path.exists():
+        # Helpful hint: if 'full' parquet missing, suggest running clean script
+        hint = (
+            "Run scripts/clean_fx_data.py first."
+            if split == "full"
+            else "Run scripts/split_fx_data.py first."
+        )
         raise FileNotFoundError(
-            f"Parquet not found: {path}\n"
-            f"Run scripts/split_fx_data.py first."
+            f"Parquet not found: {path}\n{hint}"
         )
 
     df = pd.read_parquet(path)
@@ -253,6 +276,10 @@ def load_split_data(
         end      = start + fold_sz if fold_idx < n_folds - 1 else len(df)
         df = df.iloc[start:end].reset_index(drop=True)
 
+    # Snapshot actual date range BEFORE applying filters (used in error message)
+    actual_start = df["timestamp_utc"].iloc[0].strftime("%Y-%m-%d")
+    actual_end   = df["timestamp_utc"].iloc[-1].strftime("%Y-%m-%d")
+
     # --from / --to date filter
     if date_from:
         ts_from = pd.Timestamp(date_from, tz="UTC")
@@ -267,7 +294,10 @@ def load_split_data(
     if df.empty:
         raise ValueError(
             f"No data for {pair} / {split} after applying "
-            f"--from {date_from}  --to {date_to}."
+            f"--from {date_from}  --to {date_to}.\n"
+            f"  Available range for this split: {actual_start} -> {actual_end}\n"
+            f"  Tip: rule-based strategies should use --split full to access "
+            f"the entire history."
         )
 
     return df
@@ -321,7 +351,8 @@ def print_banner(
     print(SEP2)
     print(f"  Pairs        : {', '.join(pairs)}")
     print(f"  Strategies   : {', '.join(strategies)}")
-    print(f"  Split        : {args.split.upper()}")
+    split_note = "  <- full history, no partitioning" if args.split == "full" else ""
+    print(f"  Split        : {args.split.upper()}{split_note}")
     print(f"  Date from    : {from_str}")
     print(f"  Date to      : {to_str}")
     print(f"  Folds        : {args.folds if args.folds > 0 else 'single run (no CV)'}")
@@ -430,12 +461,11 @@ def main() -> None:
                 )
                 results.extend(fold_results)
                 completed += 1
-                # print last fold as summary row
                 print_run(pair, strat_name, fold_results[-1])
                 sys.stdout.flush()
 
         # ------------------------------------------------------------------ #
-        # Single-run path  (--split train|val|test|fold_N)                   #
+        # Single-run path  (--split full|train|val|test|fold_N)              #
         # ------------------------------------------------------------------ #
         else:
             df_split = load_split_data(
