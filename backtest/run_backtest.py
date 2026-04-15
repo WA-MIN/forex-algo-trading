@@ -16,7 +16,7 @@ from backtest.report_generator import generate_report
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
 SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
-FULL_DIR       = SPLIT_ROOT_DIR             # datasets/{pair}.parquet  <- full history
+CLEANED_DIR    = PROJECT_DIR / "data" / "processed" / "cleaned"   # full history: data/processed/cleaned/{pair}_2015_2025_clean.parquet
 TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
 VAL_DIR        = SPLIT_ROOT_DIR / "val"
 TEST_DIR       = SPLIT_ROOT_DIR / "test"
@@ -67,6 +67,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Data split to run on.\n"
             "  full   -- entire cleaned history (DEFAULT, use for rule-based strategies)\n"
+            "            loads from data/processed/cleaned/{pair}_2015_2025_clean.parquet\n"
             "  train  -- training partition\n"
             "  val    -- validation partition\n"
             "  test   -- held-out test partition\n"
@@ -215,14 +216,14 @@ def resolve_split_path(split: str, pair: str) -> Path:
     """
     Returns the parquet path for a given split/pair combination.
 
-    full      -> datasets/{pair}.parquet          (entire cleaned history)
+    full      -> data/processed/cleaned/{pair}_2015_2025_clean.parquet  (entire cleaned history)
     train     -> datasets/train/{pair}_train.parquet
     val       -> datasets/val/{pair}_val.parquet
     test      -> datasets/test/{pair}_test.parquet
     fold_0..4 -> datasets/train/{pair}_train.parquet  (fold slice cut at runtime)
     """
     if split == "full":
-        return FULL_DIR / f"{pair}.parquet"
+        return CLEANED_DIR / f"{pair}_2015_2025_clean.parquet"
     if split == "train" or split.startswith("fold_"):
         return TRAIN_DIR / f"{pair}_train.parquet"
     if split == "val":
@@ -253,11 +254,10 @@ def load_split_data(
     """
     path = resolve_split_path(split, pair)
     if not path.exists():
-        # Helpful hint: if 'full' parquet missing, suggest running clean script
         hint = (
-            "Run scripts/clean_fx_data.py first."
+            "Run scripts/clean_fx_data.py first to generate data/processed/cleaned/ parquets."
             if split == "full"
-            else "Run scripts/split_fx_data.py first."
+            else "Run scripts/split_fx_data.py first to generate datasets/train|val|test/ parquets."
         )
         raise FileNotFoundError(
             f"Parquet not found: {path}\n{hint}"
@@ -351,7 +351,7 @@ def print_banner(
     print(SEP2)
     print(f"  Pairs        : {', '.join(pairs)}")
     print(f"  Strategies   : {', '.join(strategies)}")
-    split_note = "  <- full history, no partitioning" if args.split == "full" else ""
+    split_note = "  <- full history (data/processed/cleaned/)" if args.split == "full" else ""
     print(f"  Split        : {args.split.upper()}{split_note}")
     print(f"  Date from    : {from_str}")
     print(f"  Date to      : {to_str}")
