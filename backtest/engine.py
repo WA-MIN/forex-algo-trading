@@ -460,6 +460,9 @@ def run_wf_folds(
     spread_pips: Optional[float] = None,
     tp_pips:     Optional[float] = None,
     sl_pips:     Optional[float] = None,
+    session:     Optional[str]   = None,
+    entry_time:  Optional[str]   = None,
+    resample:    Optional[str]   = None,
 ) -> list[BacktestResult]:
     from backtest.strategies import get_strategy
     strat   = get_strategy(strategy)
@@ -497,6 +500,9 @@ def run_wf_folds(
             sl_pips     = sl_pips,
             fold_index  = fold_idx,
             timestamps  = timestamps,
+            session     = session,
+            entry_time  = entry_time,
+            resample    = resample,
         )
         results.append(r)
 
