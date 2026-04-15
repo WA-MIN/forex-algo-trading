@@ -121,7 +121,7 @@ def _build_config(args: argparse.Namespace) -> SimConfig:
     )
 
 
-# ── pair / strategy resolution ────────────────────────────────────────────────
+#  pair / strategy resolution 
 
 def _resolve_pairs(cfg: SimConfig) -> list[str]:
     if cfg.pair.lower() == "all":
