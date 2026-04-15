@@ -15,7 +15,7 @@ from backtest.engine         import run_backtest, run_wf_folds, PAIRS as ALL_PAI
 from backtest.report_generator import generate_report
 
 
-# ── date parser ───────────────────────────────────────────────────────────────
+#  date parser 
 
 def _parse_dt(s: str) -> datetime:
     """Accept 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM', return UTC-aware datetime."""
@@ -29,7 +29,7 @@ def _parse_dt(s: str) -> datetime:
     )
 
 
-# ── argument parser ───────────────────────────────────────────────────────────
+#  argument parser 
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -147,7 +147,7 @@ def _resolve_strategies(cfg: SimConfig) -> list[str]:
     return [cfg.strategy]
 
 
-# ── main ──────────────────────────────────────────────────────────────────────
+#  main 
 
 def main() -> None:
     parser     = _build_parser()
@@ -165,7 +165,7 @@ def main() -> None:
 
     all_results = []
 
-    # ── walk-forward CV ───────────────────────────────────────────────────────
+    #  walk-forward CV 
     if cfg.folds > 0:
         for pair in pairs:
             for strat_name in strategies:
@@ -182,7 +182,7 @@ def main() -> None:
         _write_report(cfg, all_results)
         return
 
-    # ── single run ────────────────────────────────────────────────────────────
+    #  single run 
     for pair in pairs:
         for strat_name in strategies:
             print(f"  [{pair}] {strat_name} — loading data …")
