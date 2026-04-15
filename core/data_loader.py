@@ -13,16 +13,16 @@ CLEANED_DIR  = PROJECT_DIR / "data" / "cleaned"
 # UTC hour ranges (inclusive start, exclusive end)
 SESSION_HOURS_UTC: dict[str, tuple[int, int]] = {
     "london":  (7,  16),
-    "ny":      (12, 21),
-    "asia":    (0,  9),
-    "overlap": (12, 16),   # London/NY overlap
+    "ny":      (13, 22),
+    "asia":    (0,   9),
+    "overlap": (13, 16),
 }
 
 
 def _load_split(pair: str, split: str) -> pd.DataFrame:
     """
     Load a pre-built split parquet from datasets/.
-    Supports: train, val, test, fold_0 … fold_4
+    Supports: train, val, test, fold_0 through fold_4.
     """
     if split.startswith("fold_"):
         fold_idx = split.split("_")[1]
@@ -40,15 +40,14 @@ def _load_split(pair: str, split: str) -> pd.DataFrame:
 
 def _load_date_range(pair: str, date_from: datetime, date_to: Optional[datetime]) -> pd.DataFrame:
     """
-    Slice cleaned data to a custom date range (simulation mode).
-    Falls back to val parquet if cleaned is unavailable.
+    Slice cleaned data to a custom date range.
+    Falls back to stitching all splits if the cleaned parquet is missing.
     """
     cleaned_path = CLEANED_DIR / f"{pair}_1min_clean.parquet"
 
     if cleaned_path.exists():
         df = pd.read_parquet(cleaned_path)
     else:
-        # Graceful fallback — stitch all splits
         frames = []
         for split in ("train", "val", "test"):
             p = DATASETS_DIR / split / f"{pair}_{split}.parquet"
@@ -89,9 +88,9 @@ def _apply_session_mask(df: pd.DataFrame, session: str) -> pd.DataFrame:
 
 def _apply_entry_time(df: pd.DataFrame, entry_time: str) -> pd.DataFrame:
     """
-    Zero-out (flatten) all bars before entry_time on each calendar day.
-    Rows before entry_time are kept for feature continuity but will
-    produce a flat position signal downstream.
+    Mark bars before entry_time on each calendar day.
+    Rows before entry_time are kept for feature continuity but produce
+    a flat position signal downstream.
     """
     if "timestamp_utc" not in df.columns:
         return df
@@ -106,8 +105,9 @@ def _apply_entry_time(df: pd.DataFrame, entry_time: str) -> pd.DataFrame:
 def resolve_data(cfg, pair: str) -> pd.DataFrame:
     """
     Single entry point for data loading.
-    Reads SimConfig and returns a clean, filtered DataFrame ready for
-    signal generation.
+
+    Reads SimConfig and returns a filtered DataFrame ready for signal
+    generation.
 
     Parameters
     ----------
@@ -118,7 +118,6 @@ def resolve_data(cfg, pair: str) -> pd.DataFrame:
     -------
     pd.DataFrame with at minimum: timestamp_utc, open, high, low, close
     """
-    # 1. Load
     if cfg.date_from is not None:
         df = _load_date_range(pair, cfg.date_from, cfg.date_to)
     else:
@@ -131,7 +130,6 @@ def resolve_data(cfg, pair: str) -> pd.DataFrame:
             f"(split={cfg.split}, from={cfg.date_from}, to={cfg.date_to})."
         )
 
-    # 2. Session filter
     if cfg.session is not None:
         if cfg.session not in SESSION_HOURS_UTC:
             raise ValueError(
@@ -140,7 +138,6 @@ def resolve_data(cfg, pair: str) -> pd.DataFrame:
             )
         df = _apply_session_mask(df, cfg.session)
 
-    # 3. Entry-time annotation
     if cfg.entry_time is not None:
         df = _apply_entry_time(df, cfg.entry_time)
 

@@ -6,12 +6,8 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Abstract base
-# ---------------------------------------------------------------------------
-
 class BaseStrategy(ABC):
-    """Abstract base -- all strategies must implement generate_signals."""
+    """All strategies must implement generate_signals."""
 
     name: str = ""
 
@@ -21,9 +17,8 @@ class BaseStrategy(ABC):
         Accepts a cleaned OHLCV DataFrame, returns an integer signal Series.
         Values: 1 (long), -1 (short), 0 (flat). Same index as prices.
 
-        IMPORTANT: signals are crossover events, not continuous positions.
-        The engine converts these to held positions internally via forward-fill
-        in run_backtest (shift + hold). Do NOT forward-fill here.
+        Signals are crossover events, not continuous positions. The engine
+        forward-fills these into held positions internally. Do not forward-fill here.
         """
         ...
 
@@ -31,17 +26,13 @@ class BaseStrategy(ABC):
         return f"{self.__class__.__name__}({self.name})"
 
 
-# ---------------------------------------------------------------------------
-# Trend-following
-# ---------------------------------------------------------------------------
-
 class MACrossover(BaseStrategy):
     """
     Dual moving average crossover.
 
-    Long  signal (+1) when fast MA crosses UP through slow MA.
-    Short signal (-1) when fast MA crosses DOWN through slow MA.
-    Flat  signal ( 0) on all other bars and during warm-up.
+    Fires +1 when fast MA crosses up through slow MA.
+    Fires -1 when fast MA crosses down through slow MA.
+    Returns 0 on all other bars and during warm-up.
 
     Parameters
     ----------
@@ -85,11 +76,11 @@ class MACrossover(BaseStrategy):
 
 class MomentumStrategy(BaseStrategy):
     """
-    Simple price momentum -- breakout of rolling high/low.
+    Price momentum via rolling high/low breakout.
 
-    Long  signal (+1) when close breaks above the n-bar rolling high.
-    Short signal (-1) when close breaks below the n-bar rolling low.
-    Flat  signal ( 0) during warm-up and when neither condition is met.
+    Fires +1 when close breaks above the n-bar rolling high.
+    Fires -1 when close breaks below the n-bar rolling low.
+    Returns 0 during warm-up and when neither condition is met.
 
     Parameters
     ----------
@@ -121,13 +112,13 @@ class MomentumStrategy(BaseStrategy):
 
 class DonchianBreakout(BaseStrategy):
     """
-    Donchian channel breakout (Turtle Trading basis).
+    Donchian channel breakout.
 
-    Long  signal (+1) when close breaks above the highest high of the last
-    `period` bars (excluding current bar).
-    Short signal (-1) when close breaks below the lowest low of the last
-    `period` bars (excluding current bar).
-    Flat  signal ( 0) during warm-up and when neither condition fires.
+    Fires +1 when close breaks above the highest high of the last `period`
+    bars (excluding current bar).
+    Fires -1 when close breaks below the lowest low of the last `period`
+    bars (excluding current bar).
+    Returns 0 during warm-up and when neither condition fires.
 
     Parameters
     ----------
@@ -162,20 +153,15 @@ class DonchianBreakout(BaseStrategy):
         return signals
 
 
-# ---------------------------------------------------------------------------
-# Mean reversion
-# ---------------------------------------------------------------------------
-
 class RSIMeanReversion(BaseStrategy):
     """
-    RSI threshold crossover -- mean reversion.
+    RSI threshold crossover for mean reversion.
 
-    Long  signal (+1) when RSI crosses UP through the oversold level.
-    Short signal (-1) when RSI crosses DOWN through the overbought level.
-    Flat  signal ( 0) on all other bars and during warm-up.
+    Fires +1 when RSI crosses up through the oversold level.
+    Fires -1 when RSI crosses down through the overbought level.
+    Returns 0 on all other bars and during warm-up.
 
-    RSI is computed using Wilder smoothing (ewm alpha = 1/period).
-    No external TA library required.
+    RSI uses Wilder smoothing (ewm alpha = 1/period). No external TA library.
 
     Parameters
     ----------
@@ -229,17 +215,13 @@ class RSIMeanReversion(BaseStrategy):
         return signals
 
 
-# ---------------------------------------------------------------------------
-# Volatility breakout
-# ---------------------------------------------------------------------------
-
 class BollingerBreakout(BaseStrategy):
     """
     Bollinger Band volatility breakout.
 
-    Long  signal (+1) when close crosses UP through the upper band.
-    Short signal (-1) when close crosses DOWN through the lower band.
-    Flat  signal ( 0) on all other bars and during warm-up.
+    Fires +1 when close crosses up through the upper band.
+    Fires -1 when close crosses down through the lower band.
+    Returns 0 on all other bars and during warm-up.
 
     Parameters
     ----------
@@ -278,22 +260,18 @@ class BollingerBreakout(BaseStrategy):
         return signals
 
 
-# ---------------------------------------------------------------------------
-# Momentum oscillator
-# ---------------------------------------------------------------------------
-
 class MACDSignalCross(BaseStrategy):
     """
     MACD line crosses signal line.
 
-    Long  signal (+1) when MACD line crosses UP through the signal line.
-    Short signal (-1) when MACD line crosses DOWN through the signal line.
-    Flat  signal ( 0) on all other bars and during warm-up.
+    Fires +1 when MACD line crosses up through the signal line.
+    Fires -1 when MACD line crosses down through the signal line.
+    Returns 0 on all other bars and during warm-up.
 
     MACD line   = EMA(fast) - EMA(slow)
     Signal line = EMA(MACD line, signal_period)
 
-    No external TA library required -- all computed via pandas ewm.
+    No external TA library -- computed via pandas ewm.
 
     Parameters
     ----------
@@ -340,10 +318,7 @@ class MACDSignalCross(BaseStrategy):
         return signals
 
 
-# ---------------------------------------------------------------------------
-# Registry  --  13 strategies total
-# ---------------------------------------------------------------------------
-
+# 13 strategies total
 STRATEGY_REGISTRY: dict[str, BaseStrategy] = {
     # MA Crossover (3)
     "MACrossover_f20_s50_EMA": MACrossover(fast=20, slow=50, ma_type="ema"),
@@ -382,10 +357,6 @@ def get_strategy(name: str) -> BaseStrategy:
     return STRATEGY_REGISTRY[name]
 
 
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     n = 2000
     np.random.seed(0)
@@ -396,7 +367,6 @@ if __name__ == "__main__":
     prices = pd.DataFrame({"close": close, "high": high, "low": low})
 
     print("Running strategy smoke tests...")
-    print("-" * 80)
 
     for key, strat in STRATEGY_REGISTRY.items():
         sigs = strat.generate_signals(prices)
@@ -423,5 +393,4 @@ if __name__ == "__main__":
             f"likely outputting positions not crossover events"
         )
 
-    print("-" * 80)
     print("All strategy smoke tests passed.")

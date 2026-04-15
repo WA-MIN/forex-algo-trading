@@ -15,37 +15,27 @@ TEMPLATE_PATH = Path(__file__).resolve().parent / "templates" / "report.html"
 DEFAULT_OUT   = Path(__file__).resolve().parent / "reports"
 
 
-# ---------------------------------------------------------------------------
-# JSON encoder -- handles all numpy scalar / array types
-# ---------------------------------------------------------------------------
-
 class _NumpyEncoder(json.JSONEncoder):
     """
-    Converts numpy scalars and arrays to plain Python types so json.dumps
-    never raises TypeError on int64 / float32 / ndarray / float('inf') etc.
+    Converts numpy scalars and arrays to plain Python types.
+    Handles int64, float32, ndarray, float('inf'), and NaN.
     """
 
     def default(self, obj):
-        # numpy integer family
         if isinstance(obj, np.integer):
             return int(obj)
-        # numpy float family
         if isinstance(obj, np.floating):
             v = float(obj)
-            # replace nan/inf with None so allow_nan=False is honoured
             if math.isnan(v) or math.isinf(v):
                 return None
             return v
-        # numpy bool
         if isinstance(obj, np.bool_):
             return bool(obj)
-        # numpy array
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return super().default(obj)
 
     def iterencode(self, o, _one_shot=False):
-        # also sanitise plain Python float nan/inf produced by the engine
         o = _sanitise(o)
         return super().iterencode(o, _one_shot=_one_shot)
 
@@ -60,10 +50,6 @@ def _sanitise(obj):
         return [_sanitise(v) for v in obj]
     return obj
 
-
-# ---------------------------------------------------------------------------
-# Serialiser
-# ---------------------------------------------------------------------------
 
 def _serialise_result(r: BacktestResult) -> dict:
     trade_log = [
@@ -87,10 +73,6 @@ def _serialise_result(r: BacktestResult) -> dict:
         "trade_log":      trade_log,
     }
 
-
-# ---------------------------------------------------------------------------
-# Meta builder
-# ---------------------------------------------------------------------------
 
 def _build_meta(results: List[BacktestResult], title: str) -> dict:
     pairs      = sorted({r.pair     for r in results})
@@ -120,10 +102,6 @@ def _build_meta(results: List[BacktestResult], title: str) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Public generate_report
-# ---------------------------------------------------------------------------
-
 def generate_report(
     results:      List[BacktestResult],
     out_path:     Optional[Path] = None,
@@ -135,7 +113,7 @@ def generate_report(
 
     Parameters
     ----------
-    results      : list of BacktestResult from run_backtest / run_wf_folds
+    results      : list of BacktestResult from run_backtest or run_wf_folds
     out_path     : destination .html file (auto-named if omitted)
     title        : report title shown in the topbar
     open_browser : open the file in the default browser after writing
@@ -153,7 +131,6 @@ def generate_report(
             f"Expected at backtest/templates/report.html"
         )
 
-    # resolve output path
     if out_path is None:
         DEFAULT_OUT.mkdir(parents=True, exist_ok=True)
         stamp    = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -164,16 +141,13 @@ def generate_report(
         out_path = Path(out_path)
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # build DATA payload
     data = {
         "meta":    _build_meta(results, title),
         "results": [_serialise_result(r) for r in results],
     }
 
-    # serialise -- NumpyEncoder handles int64/float32/ndarray/nan/inf
     data_json = json.dumps(data, cls=_NumpyEncoder)
 
-    # inject into template
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     rendered = template.replace(
         "__DATA_JSON__",

@@ -9,10 +9,6 @@ import pandas as pd
 
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
-# ---------------------------------------------------------------------------
-# Supported pairs + pip sizes
-# ---------------------------------------------------------------------------
-
 PAIRS: list[str] = [
     "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
     "AUDUSD", "USDCAD", "NZDUSD", "EURGBP",
@@ -21,20 +17,15 @@ PAIRS: list[str] = [
 # pip size per pair (JPY pairs: 0.01, everything else: 0.0001)
 _PIP: dict[str, float] = {p: (0.01 if "JPY" in p else 0.0001) for p in PAIRS}
 
-# default spread table (pips)
+# default spread in pips per pair
 _DEFAULT_SPREAD: dict[str, float] = {
     "EURUSD": 0.6, "GBPUSD": 0.8, "USDJPY": 0.7, "USDCHF": 1.0,
     "AUDUSD": 0.8, "USDCAD": 1.0, "NZDUSD": 1.2, "EURGBP": 1.0,
 }
 
-# data root (datasets/ lives at project root)
 _DATASETS = Path(__file__).resolve().parent.parent / "datasets"
 
-
-# ---------------------------------------------------------------------------
-# Session filters (UTC hour ranges, inclusive start exclusive end)
-# ---------------------------------------------------------------------------
-
+# session hour ranges (UTC, inclusive start, exclusive end)
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
     "london": (7,  16),
     "ny":     (13, 22),
@@ -47,13 +38,8 @@ def _in_session(hour: pd.Series, session: str) -> pd.Series:
     start, end = _SESSION_HOURS[session]
     if start < end:
         return (hour >= start) & (hour < end)
-    # wraps midnight
     return (hour >= start) | (hour < end)
 
-
-# ---------------------------------------------------------------------------
-# BacktestResult
-# ---------------------------------------------------------------------------
 
 @dataclass
 class BacktestResult:
@@ -70,7 +56,6 @@ class BacktestResult:
     rolling_sharpe: List[float] = field(default_factory=list)
     timestamps:     List[str]   = field(default_factory=list)
 
-    # signal distribution
     signal_dist:    dict        = field(default_factory=dict)
 
     # scalar metrics
@@ -88,7 +73,6 @@ class BacktestResult:
     capital_initial: float = 10_000.0
     capital_final:   float = 0.0
 
-    # trade log: list of dicts
     trade_log: List[dict] = field(default_factory=list)
 
     @property
@@ -110,15 +94,11 @@ class BacktestResult:
         }
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
 def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """Annualised Sharpe from a bar-level return array (1-min default).
-
-    NOTE: always pass the *full* bar_returns array (including zero bars).
-    Passing only non-zero bars inflates Sharpe by shrinking the denominator.
+    """
+    Annualised Sharpe from a bar-level return array.
+    Pass the full array including zero bars -- using only non-zero bars
+    shrinks std artificially and inflates the result.
     """
     if len(returns) < 2:
         return 0.0
@@ -129,9 +109,9 @@ def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
 
 
 def _sortino(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """Annualised Sortino from a bar-level return array.
-
-    NOTE: always pass the *full* bar_returns array (including zero bars).
+    """
+    Annualised Sortino from a bar-level return array.
+    Same note as _sharpe: pass the full array.
     """
     downside = returns[returns < 0]
     if len(downside) < 2:
@@ -152,13 +132,8 @@ def _max_drawdown(equity: np.ndarray) -> float:
 
 def _rolling_sharpe(
     returns: np.ndarray,
-    window: int = 390,          # 390 = 1 trading day at 1-min
+    window: int = 390,          # 1 trading day at 1-min resolution
 ) -> list[float]:
-    """Rolling annualised Sharpe over `window` bars.
-
-    window=390  -> 1 trading day  (default, 1-min data)
-    window=1950 -> 1 trading week (5 days x 390 min)
-    """
     out = []
     for i in range(len(returns)):
         w = returns[max(0, i - window + 1): i + 1]
@@ -181,10 +156,6 @@ def _resample_df(df: pd.DataFrame, freq: str) -> pd.DataFrame:
     df = df.reset_index()
     return df
 
-
-# ---------------------------------------------------------------------------
-# Core backtest engine
-# ---------------------------------------------------------------------------
 
 def run_backtest(
     signals:        pd.Series,
@@ -218,12 +189,12 @@ def run_backtest(
     split          : "train" | "val" | "test"
     spread_pips    : override spread in pips (uses table default if None)
     tp_pips        : take-profit distance in pips (None = no TP)
-    sl_pips        : stop-loss distance in pips  (None = no SL)
+    sl_pips        : stop-loss distance in pips (None = no SL)
     capital_initial: starting capital in USD
-    max_hold_bars  : maximum bars to hold a position (None = no limit)
+    max_hold_bars  : max bars to hold before forced exit (None = no limit)
     timestamps     : list of ISO timestamp strings aligned to prices
-    session        : session filter name ("london"|"ny"|"tokyo"|"sydney")
-    entry_time     : "HH:MM" UTC -- only enter at/after this time each day
+    session        : session filter ("london"|"ny"|"tokyo"|"sydney")
+    entry_time     : "HH:MM" UTC -- only enter at or after this time each day
     resample       : pandas offset string to resample before running
     direction_mode : "long_short" | "long_only" | "short_only"
     mode           : "research" | "simulation"
@@ -238,13 +209,11 @@ def run_backtest(
     prices  = prices.reset_index(drop=True)
     signals = signals.reset_index(drop=True)
 
-    # -- direction filter ----------------------------------------------------
     if direction_mode == "long_only":
         signals = signals.where(signals >= 0, 0)
     elif direction_mode == "short_only":
         signals = signals.where(signals <= 0, 0)
 
-    # -- session / entry-time filter -----------------------------------------
     if (session or entry_time) and df_full is not None:
         ts = pd.to_datetime(df_full["timestamp_utc"], utc=True)
         mask = pd.Series(True, index=signals.index)
@@ -255,10 +224,8 @@ def run_backtest(
             mask &= (ts.dt.hour > hh) | ((ts.dt.hour == hh) & (ts.dt.minute >= mm))
         signals = signals.where(mask.values, 0)
 
-    # -- forward-fill crossover events into held positions -------------------
+    # forward-fill crossover events into held positions, then shift by 1
     pos = signals.replace(0, np.nan).ffill().fillna(0).astype(int)
-
-    # shift by 1: enter on the bar AFTER the signal
     pos = pos.shift(1).fillna(0).astype(int)
 
     n = len(prices)
@@ -269,18 +236,15 @@ def run_backtest(
     tp_dist = tp_pips * pip if tp_pips is not None else None
     sl_dist = sl_pips * pip if sl_pips is not None else None
 
-    # -- trade simulation ----------------------------------------------------
     equity_curve  = np.ones(n)
     dollar_curve  = np.full(n, capital_initial)
     bar_returns   = np.zeros(n)
 
     trade_log   = []
-    open_trade  = None   # dict: entry_bar, entry_price, direction
+    open_trade  = None
     capital     = capital_initial
 
-    # BUG FIX: guard against capital_initial=0 to avoid ZeroDivisionError.
-    # When capital_initial is 0 we normalise equity against 1.0 so the
-    # equity curve is still meaningful (always == 1.0 since capital stays 0).
+    # guard against capital_initial=0 to avoid ZeroDivisionError
     _equity_base = capital_initial if capital_initial != 0.0 else 1.0
 
     for i in range(1, n):
@@ -288,14 +252,12 @@ def run_backtest(
         price   = price_arr[i]
         prev_p  = price_arr[i - 1]
 
-        # -- manage open trade -----------------------------------------------
         if open_trade is not None:
             d          = open_trade["direction"]
             ep         = open_trade["entry_price"]
             bars_held  = i - open_trade["entry_bar"]
             exit_reason = None
 
-            # TP / SL checks
             if tp_dist and d == 1  and price >= ep + tp_dist:
                 exit_reason = "TP"
             elif tp_dist and d == -1 and price <= ep - tp_dist:
@@ -308,9 +270,6 @@ def run_backtest(
                 exit_reason = "MAX_HOLD"
             elif cur_pos != d and cur_pos != 0:
                 exit_reason = "SIGNAL_FLIP"
-            elif cur_pos == 0 and signal_arr[i] == 0:
-                # keep riding until new signal or forced exit
-                pass
 
             if exit_reason:
                 raw_ret = d * (price - ep) / ep
@@ -335,7 +294,7 @@ def run_backtest(
                 })
                 open_trade = None
             else:
-                # mark-to-market
+                # mark-to-market on open trade
                 raw_ret = d * (price - prev_p) / prev_p
                 bar_returns[i] = raw_ret
                 equity_curve[i] = capital / _equity_base
@@ -345,7 +304,6 @@ def run_backtest(
             equity_curve[i] = equity_curve[i - 1]
             dollar_curve[i] = dollar_curve[i - 1]
 
-        # -- open new trade --------------------------------------------------
         if open_trade is None and cur_pos != 0:
             open_trade = {
                 "entry_bar":   i,
@@ -376,24 +334,22 @@ def run_backtest(
             "exit_reason": "END_OF_DATA",
         })
 
-    # -- compute metrics -----------------------------------------------------
     eq        = equity_curve
     ret_arr   = bar_returns
 
     total_return = float(eq[-1] - 1.0)
     mdd          = _max_drawdown(eq)
 
-    # BUG FIX: use full ret_arr (all bars), NOT nonzero-only.
-    # Using only non-zero bars shrinks std artificially -> inflated Sharpe/Sortino.
+    # use full ret_arr (all bars) -- non-zero-only shrinks std and inflates Sharpe
     net_sh    = _sharpe(ret_arr)
     sortino_v = _sortino(ret_arr)
 
-    # gross_sharpe: only positive-return bars (unchanged — measures raw upside)
+    # gross_sharpe uses only positive-return bars (measures raw upside)
     gross_sh  = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
 
     calmar_v  = (total_return / abs(mdd)) if mdd < 0 else 0.0
 
-    wins  = [t for t in trade_log if t["pnl_pct"] >= 0]
+    wins   = [t for t in trade_log if t["pnl_pct"] >= 0]
     losses = [t for t in trade_log if t["pnl_pct"] < 0]
     n_trades = len(trade_log)
     win_rate  = len(wins) / n_trades if n_trades else 0.0
@@ -401,7 +357,7 @@ def run_backtest(
     gross_profit = sum(t["pnl_pct"] for t in wins)
     gross_loss   = abs(sum(t["pnl_pct"] for t in losses))
     pf = (gross_profit / gross_loss) if gross_loss > 0 else float("inf")
-    pf = min(pf, 999.0)  # cap to avoid JSON inf issues
+    pf = min(pf, 999.0)   # cap to avoid JSON inf
 
     avg_bars = float(np.mean([t["bars_held"] for t in trade_log])) if trade_log else 0.0
     turnover = float((pos_arr != 0).mean())
@@ -413,7 +369,6 @@ def run_backtest(
         "Flat":  int(sig_counts.get(0, 0)),
     }
 
-    # BUG FIX: window raised from 21 to 390 (1 trading day at 1-min resolution)
     roll_sh = _rolling_sharpe(ret_arr, window=390)
 
     ts_list = list(timestamps) if timestamps else []
@@ -447,10 +402,6 @@ def run_backtest(
     )
 
 
-# ---------------------------------------------------------------------------
-# Walk-forward cross-validation
-# ---------------------------------------------------------------------------
-
 def run_wf_folds(
     pair:           str,
     strategy:       str,
@@ -470,10 +421,9 @@ def run_wf_folds(
     """
     Walk-forward cross-validation over the train split.
 
-    Loads datasets/train/{pair}_train.parquet, divides it into
-    n_folds equal windows, and runs a backtest on each window.
-
-    Returns a list of BacktestResult (one per fold).
+    Loads datasets/train/{pair}_train.parquet, divides it into n_folds
+    equal windows, and runs a backtest on each. Returns one BacktestResult
+    per fold.
     """
     path = _DATASETS / "train" / f"{pair}_train.parquet"
     if not path.exists():

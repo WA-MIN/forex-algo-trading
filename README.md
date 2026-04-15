@@ -1,16 +1,12 @@
 # forex-algo-trading
 
-Research project comparing rule-based, linear ML, and deep learning strategies on 1-minute FX data. The single selection criterion is mean fold net Sharpe ratio after transaction costs.
-
----
+Research pipeline comparing rule-based strategies on 1-minute FX data. The selection criterion is mean fold net Sharpe after transaction costs.
 
 ## What this is
 
-Seven currency pairs, 2015 to 2025, 1-minute bars from HistData. The pipeline runs from raw download through feature engineering, label construction, walk-forward cross-validation, and cost-aware backtesting. Every strategy gets evaluated by the same engine with the same metric definitions.
+Seven currency pairs (plus EURGBP), 2015 to 2025, 1-minute bars sourced from HistData.com. The pipeline runs from raw download through feature engineering, label construction, walk-forward cross-validation, and cost-aware backtesting. Every strategy is evaluated by the same engine with the same metric definitions.
 
-The question being answered: under realistic spreads and strict time-series cross-validation, which strategy class produces the best risk-adjusted net performance at the 1-minute level?
-
----
+The question: under realistic spreads and strict time-series cross-validation, which strategy produces the best risk-adjusted net performance at the 1-minute level?
 
 ## Repository structure
 
@@ -33,9 +29,9 @@ forex-algo-trading/
 |   `-- reports/
 |
 |-- datasets/
-|   |-- train/                  # Fixed 2015-2021 training split
-|   |-- val/                    # Fixed 2022-2023 validation split
-|   |-- test/                   # Locked -- 2024-2025, loaded once only
+|   |-- train/                  # 2015-2021 training split
+|   |-- val/                    # 2022-2023 validation split
+|   |-- test/                   # 2024-2025, loaded once only
 |   |-- folds/                  # Walk-forward folds 0 through 4
 |   `-- reports/
 |
@@ -50,36 +46,41 @@ forex-algo-trading/
 |
 |-- backtest/
 |   |-- engine.py               # Shared evaluation engine
-|   |-- strategies.py           # MACrossover and MomentumStrategy
+|   |-- strategies.py           # 13 strategies across 5 strategy classes
 |   |-- run_backtest.py         # CLI runner
 |   |-- report_generator.py     # HTML report output
 |   |-- reports/                # Generated HTML reports
 |   `-- templates/
 |
+|-- cli/
+|   |-- config.py               # SimConfig dataclass
+|   `-- run.py                  # CLI entry point
+|
+|-- core/
+|   `-- data_loader.py          # Data loading and filtering logic
+|
 |-- .gitignore
 `-- README.md
 ```
 
----
-
 ## Data
 
-**Source:** HistData.com 1-minute ASCII OHLC bars  
-**Pairs:** EURUSD, GBPUSD, USDJPY, USDCHF, USDCAD, AUDUSD, NZDUSD  
-**Coverage:** 2015-01-01 to 2025-12-31  
-**Price type:** Indicative mid-prices. No bid/ask, no order book.  
+**Source:** HistData.com 1-minute ASCII OHLC bars
+**Pairs:** EURUSD, GBPUSD, USDJPY, USDCHF, USDCAD, AUDUSD, NZDUSD, EURGBP
+**Coverage:** 2015-01-01 to 2025-12-31
+**Price type:** Indicative mid-prices. No bid/ask, no order book.
 **Volume:** Synthetic tick count.
 
-| Column          | Type           | Description                          |
-|-----------------|----------------|--------------------------------------|
-| `timestamp_utc` | datetime (UTC) | Primary key for all operations       |
-| `open`          | float64        | Bar open (mid, indicative)           |
-| `high`          | float64        | Bar high                             |
-| `low`           | float64        | Bar low                              |
-| `close`         | float64        | Bar close                            |
-| `volume`        | float64        | Synthetic tick volume                |
-| `pair`          | string         | e.g. "EURUSD"                        |
-| `session`       | string         | Asia / London / Overlap / New_York   |
+| Column          | Type           | Description                        |
+|-----------------|----------------|------------------------------------|
+| `timestamp_utc` | datetime (UTC) | Primary key for all operations     |
+| `open`          | float64        | Bar open (mid, indicative)         |
+| `high`          | float64        | Bar high                           |
+| `low`           | float64        | Bar low                            |
+| `close`         | float64        | Bar close                          |
+| `volume`        | float64        | Synthetic tick volume              |
+| `pair`          | string         | e.g. "EURUSD"                      |
+| `session`       | string         | Asia / London / Overlap / New_York |
 
 Session windows (UTC):
 
@@ -90,23 +91,19 @@ Session windows (UTC):
 | Overlap  | 13:00 - 16:59 |
 | New_York | 17:00 - 23:59 |
 
----
-
 ## Dataset splits
 
-Hardcoded in `split_fx_data.py`. Do not change.
+Hardcoded in `split_fx_data.py`.
 
-| Split | Date range               | Role                                      |
-|-------|--------------------------|-------------------------------------------|
-| Train | 2015-01-02 to 2021-12-31 | Model fitting and rule calibration        |
-| Val   | 2022-01-01 to 2023-12-31 | Hyperparameter selection only             |
-| Test  | 2024-01-01 to 2025-12-31 | Final evaluation -- loaded exactly once   |
+| Split | Date range               | Role                                    |
+|-------|--------------------------|-----------------------------------------|
+| Train | 2015-01-02 to 2021-12-31 | Model fitting and rule calibration      |
+| Val   | 2022-01-01 to 2023-12-31 | Hyperparameter selection only           |
+| Test  | 2024-01-01 to 2025-12-31 | Final evaluation -- loaded exactly once |
 
-15-row purge gap at each boundary. Matches the 15-minute maximum label horizon so no forward-return label computed at a boundary sees into the next split.
+15-row purge gap at each boundary. Prevents forward-return labels computed at a boundary from seeing into the next split.
 
 Walk-forward folds are in `datasets/folds/fold_0` through `fold_4`.
-
----
 
 ## Labels
 
@@ -125,83 +122,80 @@ Constructed in `labels_fx_data.py` as forward log-returns with a dead-zone thres
  0   |forward return| <= threshold  (Flat)
 ```
 
----
-
 ## Features
 
 Built in `features_fx_data.py` using strictly backward-looking windows.
 
-| Family          | What is computed                                               |
-|-----------------|----------------------------------------------------------------|
-| Returns         | Lagged log-returns, rolling cumulative returns                 |
-| Volatility      | Rolling realised volatility, log-range                         |
-| Trend           | Moving-average ratios, MA crossover distance                   |
-| Momentum        | N-bar momentum at multiple horizons                            |
-| Range/Structure | Bar range, close-to-high and close-to-low ratios               |
-| Session         | Session label                                                  |
-
----
+| Family          | What is computed                                             |
+|-----------------|--------------------------------------------------------------|
+| Returns         | Lagged log-returns, rolling cumulative returns               |
+| Volatility      | Rolling realised volatility, log-range                       |
+| Trend           | Moving-average ratios, MA crossover distance                 |
+| Momentum        | N-bar momentum at multiple horizons                          |
+| Range/Structure | Bar range, close-to-high and close-to-low ratios             |
+| Session         | Session label                                                |
 
 ## Backtest engine
 
-`backtest/engine.py` is the only place that computes trading metrics. No strategy or model computes its own Sharpe.
+`backtest/engine.py` is the only place that computes trading metrics.
 
 ### Key constants
 
 ```python
-PAIRS        = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD"]
+PAIRS        = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD", "NZDUSD", "EURGBP"]
 TRADING_DAYS = 252
-BARS_PER_DAY = 1440   # 1-minute data
+BARS_PER_DAY = 390    # 1-minute data, trading hours only
 ```
 
-Annualisation factor: `sqrt(BARS_PER_DAY * TRADING_DAYS)` = 602.
+Annualisation factor: `sqrt(BARS_PER_DAY * TRADING_DAYS)` = 313 (approx).
 
 ### Spread table
 
-Per-pair half-spread applied on every entry and exit:
+Per-pair half-spread applied on entry and exit:
 
 | Pair   | Spread (pips) | Pip size |
-|--------|--------------|----------|
-| EURUSD | 1.0          | 0.0001   |
-| GBPUSD | 1.2          | 0.0001   |
-| USDJPY | 1.5          | 0.01     |
-| USDCHF | 1.5          | 0.0001   |
-| USDCAD | 1.8          | 0.0001   |
-| AUDUSD | 1.4          | 0.0001   |
-| NZDUSD | 1.8          | 0.0001   |
+|--------|---------------|----------|
+| EURUSD | 0.6           | 0.0001   |
+| GBPUSD | 0.8           | 0.0001   |
+| USDJPY | 0.7           | 0.01     |
+| USDCHF | 1.0           | 0.0001   |
+| AUDUSD | 0.8           | 0.0001   |
+| USDCAD | 1.0           | 0.0001   |
+| NZDUSD | 1.2           | 0.0001   |
+| EURGBP | 1.0           | 0.0001   |
 
-Spread can be overridden per run with `--spread-override`.
+Override per run with `--spread`.
 
-### Execution
+### Execution model
 
-Signals are generated at bar `t` and executed at bar `t+1`. The engine calls `signals.shift(1).fillna(0)` before computing returns. Positions are held by forward-fill until a new signal fires.
+Signals are generated at bar `t` and executed at bar `t+1`. The engine calls `signals.shift(1).fillna(0)` before computing returns. Positions are held by forward-fill until a new signal fires or a forced exit condition is met.
 
-| Current position | Incoming signal | Action                        |
-|------------------|-----------------|-------------------------------|
-| Flat             | +1              | Open long                     |
-| Flat             | -1              | Open short                    |
-| Long             | -1              | Close long, open short        |
-| Short            | +1              | Close short, open long        |
-| Any              | 0               | Close position, go flat       |
+| Current position | Incoming signal | Action                       |
+|------------------|-----------------|------------------------------|
+| Flat             | +1              | Open long                    |
+| Flat             | -1              | Open short                   |
+| Long             | -1              | Close long, open short       |
+| Short            | +1              | Close short, open long       |
+| Any              | 0               | Close position, go flat      |
 
-TP and SL are optional parameters (`tp_pips`, `sl_pips`). Default for the first evaluation pass is `tp_pips=None`, `sl_pips=None`.
+TP and SL are optional (`tp_pips`, `sl_pips`). Default is no TP or SL.
 
-### Metrics computed
+### Metrics
 
-| Metric           | Role              |
-|------------------|-------------------|
-| Net Sharpe       | Primary selector  |
-| Max drawdown     | Risk gate         |
-| Sortino          | Confirmation      |
-| Calmar           | Confirmation      |
-| Profit factor    | Confirmation      |
-| Turnover         | Cost proxy        |
-| Win rate         | Diagnostic        |
-| Avg trade bars   | Diagnostic        |
-| N trades         | Reliability check |
-| Total return     | Absolute P&L      |
+| Metric          | Role              |
+|-----------------|-------------------|
+| Net Sharpe      | Primary selector  |
+| Max drawdown    | Risk gate         |
+| Sortino         | Confirmation      |
+| Calmar          | Confirmation      |
+| Profit factor   | Confirmation      |
+| Turnover        | Cost proxy        |
+| Win rate        | Diagnostic        |
+| Avg trade bars  | Diagnostic        |
+| N trades        | Reliability check |
+| Total return    | Absolute P&L      |
 
-The `BacktestResult` dataclass also carries a 21-bar rolling Sharpe series and signal distribution counts.
+`BacktestResult` also carries a 390-bar rolling Sharpe series and signal distribution counts.
 
 ### `run_backtest`
 
@@ -215,48 +209,80 @@ run_backtest(
     spread_pips=None,  # overrides SPREAD_TABLE if set
     tp_pips=None,
     sl_pips=None,
-    position_size=1.0,
-    fold_index=None,
+    capital_initial=10_000.0,
+    fold_index=0,
 ) -> BacktestResult
 ```
 
-### `run_cv_folds`
+### `run_wf_folds`
 
-Splits signals and prices into `n_folds` equal contiguous slices and runs `run_backtest` on each. Returns one `BacktestResult` per fold.
-
----
+Divides the train split into `n_folds` equal contiguous windows and runs `run_backtest` on each. Returns one `BacktestResult` per fold.
 
 ## Strategies
 
-`backtest/strategies.py` defines two strategies and a registry.
+`backtest/strategies.py` defines 13 strategies across 5 classes.
 
 ### MACrossover
 
-Dual moving average crossover. Fires a signal only on the bar where the fast MA crosses the slow MA. All other bars return 0. The engine holds the resulting position by forward-fill.
+Dual moving average crossover. Fires a signal only on the bar where the fast MA crosses the slow MA.
 
 ```python
-MACrossover(fast=20, slow=50, ma_type="ema")
-# ma_type: "ema" or "sma"
-# fast must be < slow
+MACrossover(fast=20, slow=50, ma_type="ema")  # ma_type: "ema" or "sma"
 ```
 
-Signal names in the registry:
-
-- `MACrossover_f20_s50_EMA`
-- `MACrossover_f10_s30_EMA`
-- `MACrossover_f20_s50_SMA`
+Registry entries: `MACrossover_f20_s50_EMA`, `MACrossover_f10_s30_EMA`, `MACrossover_f20_s50_SMA`
 
 ### MomentumStrategy
 
-Fires +1 when close breaks above the rolling `lookback`-bar high, -1 when it breaks below the rolling low. Returns 0 on all other bars.
+Fires +1 when close breaks above the rolling high, -1 when below the rolling low.
 
 ```python
 MomentumStrategy(lookback=60)
 ```
 
-Registry entries: `Momentum_lb60`, `Momentum_lb120`.
+Registry entries: `Momentum_lb60`, `Momentum_lb120`
 
-### Registry
+### DonchianBreakout
+
+Donchian channel breakout. Long on new N-bar high, short on new N-bar low.
+
+```python
+DonchianBreakout(period=20)
+```
+
+Registry entries: `Donchian_p20`, `Donchian_p55`
+
+### RSIMeanReversion
+
+Fires long when RSI crosses up through the oversold level, short when it crosses down through overbought. Uses Wilder smoothing.
+
+```python
+RSIMeanReversion(period=14, oversold=30, overbought=70)
+```
+
+Registry entries: `RSI_p14_os30_ob70`, `RSI_p7_os25_ob75`
+
+### BollingerBreakout
+
+Fires long when close crosses above the upper Bollinger Band, short when below the lower band.
+
+```python
+BollingerBreakout(period=20, std_dev=2.0)
+```
+
+Registry entries: `BB_p20_std2_0`, `BB_p14_std1_5`
+
+### MACDSignalCross
+
+Fires long when the MACD line crosses above the signal line, short when it crosses below.
+
+```python
+MACDSignalCross(fast=12, slow=26, signal_period=9)
+```
+
+Registry entries: `MACD_f12_s26_sig9`, `MACD_f8_s21_sig5`
+
+### Using the registry
 
 ```python
 from backtest.strategies import get_strategy, STRATEGY_REGISTRY
@@ -265,33 +291,29 @@ strat = get_strategy("MACrossover_f20_s50_EMA")
 signals = strat.generate_signals(prices_df)
 ```
 
----
-
 ## Runner CLI
 
-`backtest/run_backtest.py` loads cleaned data from `data/processed/cleaned/`, runs the requested strategies, prints a colour-coded results table to the terminal, and writes an HTML report to `backtest/reports/`.
+`backtest/run_backtest.py` loads data from `datasets/`, runs the requested strategies, prints a results table to the terminal, and writes an HTML report to `backtest/reports/`.
 
 ```bash
 python -m backtest.run_backtest \
-  --pairs EURUSD GBPUSD \
-  --strategies MACrossover_f20_s50_EMA Momentum_lb60 \
+  --pair EURUSD GBPUSD \
+  --strategy MACrossover_f20_s50_EMA Momentum_lb60 \
   --split val \
   --folds 5 \
-  --spread-override 1.2 \
+  --spread 1.2 \
   --tp-pips 10 \
   --sl-pips 5 \
   --no-browser
 ```
 
-All arguments are optional. Defaults: all pairs, all strategies, `val` split, no folds (single full-period run), table spreads, no TP/SL.
+All arguments are optional. Defaults: all pairs, all strategies, `full` split, no folds, table spreads, no TP/SL.
 
-The `--split test` flag is available but must not be used until all hyperparameter decisions are finalised.
-
----
+Do not use `--split test` until all hyperparameter decisions are final.
 
 ## Pipeline execution
 
-Run in order. Each script is idempotent -- skip if outputs already exist, rerun with `--force`.
+Run in order. Each script is idempotent.
 
 ```bash
 python scripts/download_fx_data.py
@@ -303,31 +325,24 @@ python scripts/labels_fx_data.py
 python scripts/split_fx_data.py
 ```
 
-After the pipeline, run strategies via the backtest runner above.
-
----
+Then run strategies via the backtest runner above.
 
 ## Leakage rules
 
 - No scaler or normalisation statistic is computed on val or test data.
 - `datasets/test/` is not loaded until the final evaluation run.
 - No hyperparameter decision references test-set metrics.
-- LSTM sequence windows never span split or fold boundaries.
-
----
 
 ## Reproducibility
 
-| Control              | How it is set                                                  |
-|----------------------|----------------------------------------------------------------|
-| Random seeds         | `random.seed(42)`, `np.random.seed(42)`, `torch.manual_seed(42)` |
-| Split boundaries     | Hardcoded in `split_fx_data.py`                               |
-| Scaler fit scope     | Training fold only, applied forward                           |
-| Metric computation   | Single shared `engine.py`, nowhere else                       |
-| File format          | Parquet throughout, preserves dtypes                          |
-| Timestamps           | UTC everywhere                                                 |
-
----
+| Control            | How it is set                                              |
+|--------------------|------------------------------------------------------------|
+| Random seeds       | `random.seed(42)`, `np.random.seed(42)`                   |
+| Split boundaries   | Hardcoded in `split_fx_data.py`                           |
+| Scaler fit scope   | Training fold only, applied forward                       |
+| Metric computation | Single shared `engine.py`, nowhere else                   |
+| File format        | Parquet throughout, preserves dtypes                      |
+| Timestamps         | UTC everywhere                                            |
 
 ## Dependencies
 
@@ -338,23 +353,18 @@ pandas
 numpy
 pyarrow
 scikit-learn
-torch
 matplotlib
 seaborn
 pyyaml
 ```
 
----
-
 ## What is not in this project
 
 - No live or paper trading
 - No tick-level or order book data
-- No LightGBM or XGBoost
-- No Transformer or reinforcement learning models
+- No ML or deep learning models
+- No LightGBM, XGBoost, or Transformer architectures
 - No overnight financing in the baseline experiments
-
----
 
 ## References
 
