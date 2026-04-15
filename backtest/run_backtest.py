@@ -1,29 +1,45 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
-import numpy as np
+import numpy  as np
 import pandas as pd
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from backtest.engine import PAIRS, run_backtest, run_wf_folds
+from backtest.engine    import PAIRS, run_backtest, run_wf_folds
 from backtest.report_generator import generate_report
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
 SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
-TRAIN_DIR = SPLIT_ROOT_DIR / "train"
-VAL_DIR = SPLIT_ROOT_DIR / "val"
-TEST_DIR = SPLIT_ROOT_DIR / "test"
+TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
+VAL_DIR        = SPLIT_ROOT_DIR / "val"
+TEST_DIR       = SPLIT_ROOT_DIR / "test"
 
-ALL_PAIRS = PAIRS
+ALL_PAIRS      = PAIRS
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
 
+# Named splits the user can pass to --split
+NAMED_SPLITS = ["train", "val", "test"] + [f"fold_{i}" for i in range(5)]
 
-# argument parser
+# Session hour windows (UTC): start inclusive, end exclusive
+#   asia    = Tokyo + Sydney overlap
+#   overlap = London / NY overlap
+_SESSION_HOURS: dict[str, tuple[int, int]] = {
+    "london":  (7,  16),
+    "ny":      (13, 22),
+    "asia":    (23,  8),   # wraps midnight
+    "overlap": (13, 16),   # London/NY crossover
+}
+
+
+# ---------------------------------------------------------------------------
+# Argument parser
+# ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -31,11 +47,11 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
-    # data selection
+    # -- data selection -------------------------------------------------------
     parser.add_argument(
         "--pair", nargs="+", default=["all"],
         metavar="PAIR",
-        help="One or more pairs to run, or 'all'.\nExample: --pair EURUSD GBPUSD",
+        help="One or more pairs, or 'all'.\nExample: --pair EURUSD GBPUSD",
     )
     parser.add_argument(
         "--strategy", nargs="+", default=["all"],
@@ -43,63 +59,99 @@ def parse_args() -> argparse.Namespace:
         help="One or more strategy names, or 'all'.\nExample: --strategy MACrossover_f20_s50_EMA",
     )
     parser.add_argument(
-        "--split", choices=["train", "val", "test"], default="val",
-        help="Data split to run on. Default: val",
+        "--split",
+        choices=NAMED_SPLITS,
+        default="val",
+        metavar="SPLIT",
+        help=(
+            "Data split to run on.\n"
+            "Named splits : train | val | test\n"
+            "WF fold      : fold_0 .. fold_4  (loads train parquet, selects Nth window)\n"
+            "Default      : val"
+        ),
     )
 
-    # walk-forward CV
+    # -- date range -----------------------------------------------------------
+    parser.add_argument(
+        "--from", dest="date_from",
+        type=str, default=None,
+        metavar="DATETIME",
+        help=(
+            "Start of the analysis window (inclusive).\n"
+            "Accepts ISO 8601: '2022-01-01' or '2022-01-01T00:00:00'.\n"
+            "Applied AFTER loading the split parquet."
+        ),
+    )
+    parser.add_argument(
+        "--to", dest="date_to",
+        type=str, default=None,
+        metavar="DATETIME",
+        help=(
+            "End of the analysis window (inclusive).\n"
+            "Accepts ISO 8601: '2022-12-31' or '2022-12-31T23:59:00'."
+        ),
+    )
+
+    # -- walk-forward CV ------------------------------------------------------
     parser.add_argument(
         "--folds", type=int, default=0,
-        metavar="N",
-        help="Walk-forward folds. 0 = single full-period run.",
+        metavar="FOLDS",
+        help="Walk-forward folds (uses train split). 0 = single full-period run.",
     )
 
-    # capital + execution
+    # -- capital + execution --------------------------------------------------
     parser.add_argument(
         "--capital", type=float, default=10_000.0,
-        metavar="AMOUNT",
-        help="Starting capital in USD. Default: 10000\nSetting this switches the report badge to SIM.",
+        metavar="CAPITAL",
+        help="Starting capital in USD. Default: 10000.",
     )
     parser.add_argument(
-        "--spread-override", type=float, default=None,
-        metavar="PIPS",
-        help="Override spread (pips) for all pairs.",
+        "--spread", type=float, default=None,
+        metavar="SPREAD",
+        help="Override spread in pips for all pairs. Uses per-pair table if omitted.",
     )
     parser.add_argument(
         "--tp-pips", type=float, default=None,
-        metavar="PIPS",
+        metavar="TP_PIPS",
         help="Take-profit distance in pips.",
     )
     parser.add_argument(
         "--sl-pips", type=float, default=None,
-        metavar="PIPS",
+        metavar="SL_PIPS",
         help="Stop-loss distance in pips.",
     )
     parser.add_argument(
         "--max-hold", type=int, default=None,
         metavar="BARS",
-        help="Maximum bars to hold a position.\nWith 1-min data: 60 = 1 hour, 240 = 4 hours.",
+        help=(
+            "Maximum bars to hold a position.\n"
+            "With 1-min data: 60 = 1 h, 240 = 4 h."
+        ),
     )
 
-    # time filters
+    # -- time filters ---------------------------------------------------------
     parser.add_argument(
-        "--session", type=str, default=None,
-        choices=["london", "ny", "tokyo", "sydney"],
-        help="Only trade during this session window (UTC).\n"
-             "london 07-16  |  ny 13-22  |  tokyo 23-08  |  sydney 21-06",
+        "--session",
+        choices=list(_SESSION_HOURS.keys()),
+        default=None,
+        metavar="SESSION",
+        help=(
+            "Only enter trades inside this session window (UTC).\n"
+            "london 07-16  |  ny 13-22  |  asia 23-08  |  overlap 13-16"
+        ),
     )
     parser.add_argument(
         "--entry-time", type=str, default=None,
         metavar="HH:MM",
-        help="Only enter trades at or after this UTC time each day.\nExample: --entry-time 09:00",
+        help="Only enter trades at or after this UTC time each day. Example: 09:00",
     )
     parser.add_argument(
         "--resample", type=str, default=None,
         metavar="FREQ",
-        help="Resample bars before running. Any pandas offset string.\nExamples: 1H  4H  15min  1D",
+        help="Resample bars before running. Any pandas offset string: 1H 4H 15min 1D.",
     )
 
-    # direction mode
+    # -- direction mode -------------------------------------------------------
     parser.add_argument(
         "--direction",
         choices=["long_short", "long_only", "short_only"],
@@ -107,27 +159,29 @@ def parse_args() -> argparse.Namespace:
         metavar="MODE",
         help=(
             "Which signal directions to trade.\n"
-            "long_short -- trade both longs and shorts (default)\n"
-            "long_only  -- suppress all short (-1) signals\n"
-            "short_only -- suppress all long  (+1) signals"
+            "long_short -- both longs and shorts (default)\n"
+            "long_only  -- suppress short (-1) signals\n"
+            "short_only -- suppress long  (+1) signals"
         ),
     )
 
-    # output
+    # -- output ---------------------------------------------------------------
     parser.add_argument(
         "--out", type=Path, default=None,
-        metavar="PATH",
-        help="Custom output path for the HTML report.",
+        metavar="OUTPUT_PATH",
+        help="Custom output .html path. Auto-named if omitted.",
     )
     parser.add_argument(
         "--no-browser", action="store_true",
-        help="Save report without opening it in the browser.",
+        help="Write report without opening it in the browser.",
     )
 
     return parser.parse_args()
 
 
-# resolvers
+# ---------------------------------------------------------------------------
+# Resolvers
+# ---------------------------------------------------------------------------
 
 def resolve_pairs(raw: list[str]) -> list[str]:
     if raw == ["all"]:
@@ -144,66 +198,122 @@ def resolve_strategies(raw: list[str]) -> list[str]:
     invalid = [s for s in raw if s not in STRATEGY_REGISTRY]
     if invalid:
         raise ValueError(
-            f"Unknown strategies: {invalid}. Available: {ALL_STRATEGIES}"
+            f"Unknown strategies: {invalid}.\nAvailable: {ALL_STRATEGIES}"
         )
     return raw
 
 
-# data loader
+def resolve_split_path(split: str, pair: str) -> Path:
+    """
+    Returns the parquet path for a given split/pair combination.
+    fold_0..fold_4 all load the train parquet (the fold slice is cut at runtime).
+    """
+    if split in ("train",) or split.startswith("fold_"):
+        return TRAIN_DIR / f"{pair}_train.parquet"
+    if split == "val":
+        return VAL_DIR   / f"{pair}_val.parquet"
+    if split == "test":
+        return TEST_DIR  / f"{pair}_test.parquet"
+    raise ValueError(f"Unrecognised split: {split!r}")
 
-def load_split_data(pair: str, split: str) -> pd.DataFrame:
-    split_map = {"train": TRAIN_DIR, "val": VAL_DIR, "test": TEST_DIR}
-    path = split_map[split] / f"{pair}_{split}.parquet"
+
+# ---------------------------------------------------------------------------
+# Data loader
+# ---------------------------------------------------------------------------
+
+def load_split_data(
+    pair:      str,
+    split:     str,
+    date_from: str | None = None,
+    date_to:   str | None = None,
+) -> pd.DataFrame:
+    """
+    Loads the parquet for *pair* / *split*, then:
+      1. For fold_N splits: slices the train data into 5 equal windows and
+         returns window N (0-indexed).
+      2. Applies --from / --to date filters on timestamp_utc.
+    """
+    path = resolve_split_path(split, pair)
     if not path.exists():
         raise FileNotFoundError(
-            f"Split parquet not found: {path}\n"
+            f"Parquet not found: {path}\n"
             f"Run scripts/split_fx_data.py first."
         )
+
     df = pd.read_parquet(path)
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
-    return df.sort_values("timestamp_utc").reset_index(drop=True)
+    df = df.sort_values("timestamp_utc").reset_index(drop=True)
+
+    # fold_N -- slice into 5 equal windows, pick window N
+    if split.startswith("fold_"):
+        fold_idx = int(split.split("_")[1])   # 0-4
+        n_folds  = 5
+        fold_sz  = len(df) // n_folds
+        start    = fold_idx * fold_sz
+        end      = start + fold_sz if fold_idx < n_folds - 1 else len(df)
+        df = df.iloc[start:end].reset_index(drop=True)
+
+    # --from / --to date filter
+    if date_from:
+        ts_from = pd.Timestamp(date_from, tz="UTC")
+        df = df[df["timestamp_utc"] >= ts_from].reset_index(drop=True)
+    if date_to:
+        ts_to = pd.Timestamp(date_to, tz="UTC")
+        # make end-of-day inclusive when only a date string is supplied
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", date_to.strip()):
+            ts_to = ts_to + pd.Timedelta(hours=23, minutes=59, seconds=59)
+        df = df[df["timestamp_utc"] <= ts_to].reset_index(drop=True)
+
+    if df.empty:
+        raise ValueError(
+            f"No data for {pair} / {split} after applying "
+            f"--from {date_from}  --to {date_to}."
+        )
+
+    return df
 
 
-# console formatting
+# ---------------------------------------------------------------------------
+# Console formatting
+# ---------------------------------------------------------------------------
 
-SEP = "-" * 115
+SEP  = "-" * 115
 SEP2 = "=" * 115
 
-GREEN = "\033[92m"
+GREEN  = "\033[92m"
 YELLOW = "\033[93m"
-RED = "\033[91m"
-CYAN = "\033[96m"
-RESET = "\033[0m"
+RED    = "\033[91m"
+CYAN   = "\033[96m"
+RESET  = "\033[0m"
 
 
 def _sharpe_colour(v: float) -> str:
-    if v >= 0.5:
-        return GREEN
-    if v >= 0.0:
-        return YELLOW
+    if v >= 0.5:  return GREEN
+    if v >= 0.0:  return YELLOW
     return RED
 
 
 def print_banner(
-    pairs: list[str],
+    pairs:      list[str],
     strategies: list[str],
-    args: argparse.Namespace,
+    args:       argparse.Namespace,
     total_runs: int,
-    mode: str,
+    mode:       str,
 ) -> None:
-    cap_str = f"${args.capital:,.2f}"
+    cap_str      = f"${args.capital:,.2f}"
     max_hold_str = f"{args.max_hold} bars" if args.max_hold else "none"
-    session_str = args.session if args.session else "all hours"
-    entry_str = f"{args.entry_time} UTC" if args.entry_time else "any bar"
+    session_str  = args.session if args.session else "all hours"
+    entry_str    = f"{args.entry_time} UTC" if args.entry_time else "any bar"
     resample_str = args.resample if args.resample else "native 1-min"
-    spread_str = (
-        f"{args.spread_override} pips (override)"
-        if args.spread_override is not None
+    spread_str   = (
+        f"{args.spread} pips (override)" if args.spread is not None
         else "table default"
     )
-    tp_str = f"{args.tp_pips} pips" if args.tp_pips is not None else "none"
-    sl_str = f"{args.sl_pips} pips" if args.sl_pips is not None else "none"
-    mode_colour = CYAN if mode == "simulation" else YELLOW
+    tp_str       = f"{args.tp_pips} pips" if args.tp_pips  is not None else "none"
+    sl_str       = f"{args.sl_pips} pips" if args.sl_pips  is not None else "none"
+    from_str     = args.date_from if args.date_from else "split start"
+    to_str       = args.date_to   if args.date_to   else "split end"
+    mode_colour  = CYAN if mode == "simulation" else YELLOW
 
     print()
     print(SEP2)
@@ -212,6 +322,8 @@ def print_banner(
     print(f"  Pairs        : {', '.join(pairs)}")
     print(f"  Strategies   : {', '.join(strategies)}")
     print(f"  Split        : {args.split.upper()}")
+    print(f"  Date from    : {from_str}")
+    print(f"  Date to      : {to_str}")
     print(f"  Folds        : {args.folds if args.folds > 0 else 'single run (no CV)'}")
     print(f"  Mode         : {mode_colour}{mode.upper()}{RESET}")
     print(f"  Direction    : {args.direction}")
@@ -248,10 +360,10 @@ def print_run(pair: str, strat_name: str, r) -> None:
 
 
 def print_summary(results: list) -> None:
-    sharpes = [r.net_sharpe for r in results]
+    sharpes = [r.net_sharpe   for r in results]
     returns = [r.total_return for r in results]
-    dds = [r.max_drawdown for r in results]
-    best_i = int(np.argmax(sharpes))
+    dds     = [r.max_drawdown for r in results]
+    best_i  = int(np.argmax(sharpes))
     worst_i = int(np.argmin(sharpes))
     pos_runs = sum(1 for s in sharpes if s >= 0)
 
@@ -275,48 +387,64 @@ def print_summary(results: list) -> None:
     print()
 
 
-# main
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 def main() -> None:
-    args = parse_args()
-    pairs = resolve_pairs(args.pair)
+    args       = parse_args()
+    pairs      = resolve_pairs(args.pair)
     strategies = resolve_strategies(args.strategy)
     total_runs = len(pairs) * len(strategies)
 
-    # mode -- simulation when user explicitly set a non-default capital
+    # simulation mode when user set a non-default capital value
     mode = "simulation" if args.capital != 10_000.0 else "research"
 
     print_banner(pairs, strategies, args, total_runs, mode)
     print_header()
 
-    results = []
+    results   = []
     completed = 0
 
     for pair in pairs:
 
-        # walk-forward CV path
+        # ------------------------------------------------------------------ #
+        # Walk-forward CV path  (--folds N)                                  #
+        # ------------------------------------------------------------------ #
         if args.folds > 0:
             for strat_name in strategies:
                 fold_results = run_wf_folds(
-                    pair=pair,
-                    strategy=strat_name,
-                    n_folds=args.folds,
-                    spread_pips=args.spread_override,
-                    tp_pips=args.tp_pips,
-                    sl_pips=args.sl_pips,
-                    session=args.session,
-                    entry_time=args.entry_time,
-                    resample=args.resample,
-                    direction_mode=args.direction,   # fix: was missing
+                    pair            = pair,
+                    strategy        = strat_name,
+                    n_folds         = args.folds,
+                    spread_pips     = args.spread,
+                    tp_pips         = args.tp_pips,
+                    sl_pips         = args.sl_pips,
+                    capital_initial = args.capital,
+                    max_hold_bars   = args.max_hold,
+                    session         = args.session,
+                    entry_time      = args.entry_time,
+                    resample        = args.resample,
+                    direction_mode  = args.direction,
+                    mode            = mode,
                 )
                 results.extend(fold_results)
                 completed += 1
+                # print last fold as summary row
                 print_run(pair, strat_name, fold_results[-1])
                 sys.stdout.flush()
 
-        # single-run path
+        # ------------------------------------------------------------------ #
+        # Single-run path  (--split train|val|test|fold_N)                   #
+        # ------------------------------------------------------------------ #
         else:
-            df_split = load_split_data(pair, args.split)
+            df_split = load_split_data(
+                pair      = pair,
+                split     = args.split,
+                date_from = args.date_from,
+                date_to   = args.date_to,
+            )
+
             prices = df_split["close"].reset_index(drop=True)
             timestamps = (
                 df_split["timestamp_utc"]
@@ -326,28 +454,29 @@ def main() -> None:
             )
 
             for strat_name in strategies:
-                strat = get_strategy(strat_name)
+                strat   = get_strategy(strat_name)
                 signals = strat.generate_signals(
                     df_split.reset_index(drop=True)
                 ).reset_index(drop=True)
 
                 r = run_backtest(
-                    signals=signals,
-                    prices=prices,
-                    pair=pair,
-                    strategy=strat.name,
-                    split=args.split,
-                    spread_pips=args.spread_override,
-                    tp_pips=args.tp_pips,
-                    sl_pips=args.sl_pips,
-                    capital_initial=args.capital,
-                    max_hold_bars=args.max_hold,
-                    timestamps=timestamps,
-                    session=args.session,
-                    entry_time=args.entry_time,
-                    resample=args.resample,
-                    direction_mode=args.direction,
-                    mode=mode,
+                    signals         = signals,
+                    prices          = prices,
+                    pair            = pair,
+                    strategy        = strat.name,
+                    split           = args.split,
+                    spread_pips     = args.spread,
+                    tp_pips         = args.tp_pips,
+                    sl_pips         = args.sl_pips,
+                    capital_initial = args.capital,
+                    max_hold_bars   = args.max_hold,
+                    timestamps      = timestamps,
+                    session         = args.session,
+                    entry_time      = args.entry_time,
+                    resample        = args.resample,
+                    direction_mode  = args.direction,
+                    mode            = mode,
+                    df_full         = df_split,
                 )
                 results.append(r)
                 completed += 1
@@ -358,9 +487,9 @@ def main() -> None:
 
     print("  Generating report...")
     out = generate_report(
-        results=results,
-        out_path=args.out,
-        open_browser=not args.no_browser,
+        results      = results,
+        out_path     = args.out,
+        open_browser = not args.no_browser,
     )
     print(f"  Done. {out.name}")
     print()
