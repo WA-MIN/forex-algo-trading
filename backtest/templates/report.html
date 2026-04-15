@@ -1,1009 +1,928 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>__TITLE__</title>
-<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
   :root {
-    --bg:           #0b0d10;
-    --surface:      #111318;
-    --surface-2:    #161a20;
-    --surface-3:    #1c2028;
-    --border:       rgba(255,255,255,0.08);
-    --border-faint: rgba(255,255,255,0.04);
-    --text:         #dde1ea;
-    --text-muted:   #8a91a8;
-    --text-faint:   #454c5e;
-    --accent:       #4f8ef7;
-    --accent-dim:   rgba(79,142,247,0.14);
-    --green:        #34d058;
-    --green-dim:    rgba(52,208,88,0.13);
-    --red:          #f05252;
-    --red-dim:      rgba(240,82,82,0.13);
-    --gold:         #f4b942;
-    --gold-dim:     rgba(244,185,66,0.13);
-    --radius:       6px;
-    --radius-lg:    10px;
-    --font-body:    'DM Sans', system-ui, sans-serif;
-    --font-mono:    'JetBrains Mono', monospace;
+    --bg: #0f1117;
+    --surface: #161b27;
+    --surface-2: #1c2333;
+    --border: #2a3345;
+    --text: #e2e8f0;
+    --text-muted: #7a8599;
+    --text-faint: #3d4a5c;
+    --primary: #3b82f6;
+    --primary-dim: #1d3a6b;
+    --green: #22c55e;
+    --green-dim: #14532d;
+    --red: #ef4444;
+    --red-dim: #4c1d1d;
+    --yellow: #eab308;
+    --yellow-dim: #42360a;
+    --purple: #a855f7;
+    --purple-dim: #3b1263;
+    --cyan: #06b6d4;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --font: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   }
 
-  html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
 
   body {
-    font-family: var(--font-body);
-    font-size: 13px;
-    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
     background: var(--bg);
-    line-height: 1.5;
+    color: var(--text);
+    line-height: 1.6;
     min-height: 100vh;
   }
 
-  .layout { display: flex; min-height: 100vh; }
-
-  /* ── Sidebar ── */
-  .sidebar {
-    width: 220px; flex-shrink: 0;
-    background: var(--surface); border-right: 1px solid var(--border);
-    position: fixed; top: 0; left: 0; bottom: 0;
-    overflow-y: auto; z-index: 100;
-    display: flex; flex-direction: column;
+  /* topbar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 24px;
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
   }
 
-  .sidebar-brand { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
-  .brand-eyebrow { font-size: 9px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 4px; }
-  .brand-name    { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
-  .brand-name span { color: var(--accent); }
-  .brand-sub     { font-size: 10px; color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono); }
-
-  .sidebar-filters { padding: 14px 14px 6px; }
-  .filter-group    { margin-bottom: 10px; }
-  .filter-group label {
-    display: block; font-size: 9px; font-weight: 600; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px;
+  .topbar-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: -0.3px;
+    color: var(--text);
+    text-decoration: none;
   }
-  .filter-group select {
-    width: 100%; padding: 7px 10px;
-    border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--surface-2);
-    font-family: var(--font-body); font-size: 12px; color: var(--text);
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a91a8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 8px center;
-    cursor: pointer; transition: border-color 150ms;
+
+  .topbar-logo svg { color: var(--primary); }
+
+  .topbar-sep { flex: 1; }
+
+  .topbar-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
   }
-  .filter-group select:hover  { border-color: var(--accent); }
-  .filter-group select:focus  { outline: none; border-color: var(--accent); }
-  .filter-group select option { background: var(--surface-2); color: var(--text); }
 
-  .sidebar-nav  { padding: 8px 10px; flex: 1; }
-  .nav-label    { font-size: 9px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); padding: 10px 8px 5px; }
-  .nav-item     {
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-    border-radius: var(--radius); font-size: 12px; font-weight: 500;
-    color: var(--text-muted); cursor: pointer;
-    transition: background 150ms, color 150ms; margin-bottom: 1px; user-select: none;
+  /* badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
   }
-  .nav-dot      { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; transition: background 150ms; }
-  .nav-item:hover            { background: var(--surface-2); color: var(--text); }
-  .nav-item:hover .nav-dot   { background: var(--text-muted); }
-  .nav-item.active           { background: var(--accent-dim); color: var(--accent); }
-  .nav-item.active .nav-dot  { background: var(--accent); }
 
-  .sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-faint); font-family: var(--font-mono); line-height: 1.8; }
+  .badge-blue { background: var(--primary-dim); color: var(--primary); }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-red { background: var(--red-dim); color: var(--red); }
+  .badge-yellow { background: var(--yellow-dim); color: var(--yellow); }
+  .badge-purple { background: var(--purple-dim); color: var(--purple); }
 
-  /* ── Main ── */
-  .main    { margin-left: 220px; flex: 1; min-width: 0; }
+  /* layout */
+  .page { max-width: 1400px; margin: 0 auto; padding: 24px 24px 64px; }
 
-  .topbar  {
-    background: var(--surface); border-bottom: 1px solid var(--border);
-    padding: 0 26px; height: 52px; position: sticky; top: 0; z-index: 50;
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  .section { margin-bottom: 32px; }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
   }
-  .topbar-left  { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-  .topbar-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .topbar-meta  { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
-  .topbar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
-  /* badge — gold for BT, blue for SIM */
-  .badge-split {
-    padding: 3px 10px; border-radius: 99px; font-size: 10px; font-weight: 600;
-    font-family: var(--font-mono); letter-spacing: 0.05em;
-  }
-  .badge-split.bt  { background: var(--gold-dim);   color: var(--gold);   border: 1px solid rgba(244,185,66,0.2); }
-  .badge-split.sim { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(79,142,247,0.2); }
-
-  .btn-export {
-    padding: 7px 16px; background: var(--accent); color: #fff; border: none;
-    border-radius: var(--radius); font-size: 12px; font-weight: 600;
-    font-family: var(--font-body); cursor: pointer; transition: opacity 150ms;
-  }
-  .btn-export:hover { opacity: 0.85; }
-
-  .content { padding: 22px 26px 48px; }
-  .section { margin-bottom: 34px; scroll-margin-top: 68px; }
-
-  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-  .section-title  { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); white-space: nowrap; }
-  .section-line   { flex: 1; height: 1px; background: var(--border); }
-
-  /* ── KPI grid ── */
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; margin-bottom: 18px; }
-  .kpi-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-lg); padding: 16px 16px 12px;
-    position: relative; overflow: hidden;
-  }
-  .kpi-card::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
-  .kpi-card.positive::before { background: var(--green); }
-  .kpi-card.negative::before { background: var(--red); }
-  .kpi-card.neutral::before  { background: var(--text-faint); }
-  .kpi-label { font-size: 9px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
-  .kpi-value { font-family: var(--font-mono); font-size: 22px; font-weight: 500; color: var(--text); line-height: 1; letter-spacing: -0.02em; }
-  .kpi-value.pos { color: var(--green); }
-  .kpi-value.neg { color: var(--red); }
-  .kpi-sub   { font-size: 10px; color: var(--text-faint); margin-top: 6px; }
-
-  /* ── Chart cards ── */
-  .chart-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-lg); padding: 18px 18px 14px; margin-bottom: 12px;
-  }
-  .chart-head          { margin-bottom: 12px; }
-  .chart-head h3       { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
-  .chart-head p        { font-size: 11px; color: var(--text-muted); }
-  .chart-head-row      { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-  .chart-row           { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-  /* equity toggle button */
-  .btn-toggle {
-    display: flex; gap: 2px; background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 3px; flex-shrink: 0;
-  }
-  .btn-toggle button {
-    padding: 4px 12px; border-radius: calc(var(--radius) - 2px);
-    font-size: 11px; font-weight: 600; font-family: var(--font-mono);
-    color: var(--text-muted); background: none; border: none;
-    cursor: pointer; transition: background 150ms, color 150ms;
-  }
-  .btn-toggle button.active { background: var(--surface-3); color: var(--text); }
-
-  /* ── Meta strip ── */
+  /* meta strip */
   .meta-strip {
-    display: flex; flex-wrap: wrap;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 24px;
   }
-  .meta-item {
-    display: flex; flex-direction: column; gap: 3px;
-    padding: 13px 18px; border-right: 1px solid var(--border);
-    flex: 1; min-width: 110px;
+
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12px;
+    color: var(--text-muted);
   }
-  .meta-item:last-child  { border-right: none; }
-  .meta-item .mi-label   { font-size: 9px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
-  .meta-item .mi-value   { font-size: 12px; font-family: var(--font-mono); color: var(--text); }
-  .meta-item .mi-value.pos { color: var(--green); }
-  .meta-item .mi-value.neg { color: var(--red); }
 
-  /* ── Tables ── */
-  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: auto; }
-  .table-card table        { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .table-card thead th     {
-    background: var(--surface-2); padding: 9px 13px; text-align: left;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--text-muted); border-bottom: 1px solid var(--border);
-    white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  .meta-chip strong { color: var(--text); font-weight: 600; }
+
+  /* kpi row */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
   }
-  .table-card thead th.sortable { cursor: pointer; user-select: none; }
-  .table-card thead th.sortable:hover { color: var(--text); }
-  .table-card thead th .sort-arrow  { margin-left: 4px; opacity: 0.4; font-size: 9px; }
-  .table-card thead th.sort-asc  .sort-arrow { opacity: 1; }
-  .table-card thead th.sort-desc .sort-arrow { opacity: 1; }
-  .table-card tbody tr             { border-bottom: 1px solid var(--border-faint); transition: background 100ms; }
-  .table-card tbody tr:last-child  { border-bottom: none; }
-  .table-card tbody tr:hover       { background: var(--surface-2); }
-  .table-card tbody td             { padding: 9px 13px; font-family: var(--font-mono); font-size: 11px; color: var(--text); white-space: nowrap; }
-  .table-card tbody td.label-cell  { font-family: var(--font-body); font-weight: 500; font-size: 12px; color: var(--text); }
 
-  /* trade log max height */
-  .tradelog-wrap { max-height: 420px; overflow-y: auto; }
-
-  /* section sub-stat line */
-  .section-stat { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 10px; }
-  .section-stat span { margin-right: 18px; }
-  .section-stat .pos { color: var(--green); }
-  .section-stat .neg { color: var(--red); }
-
-  /* ── Pills ── */
-  .pill         { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 600; font-family: var(--font-mono); }
-  .pill-green   { background: var(--green-dim);                    color: var(--green); }
-  .pill-red     { background: var(--red-dim);                      color: var(--red); }
-  .pill-blue    { background: var(--accent-dim);                   color: var(--accent); }
-  .pill-gold    { background: var(--gold-dim);                     color: var(--gold); }
-  .pill-grey    { background: rgba(255,255,255,0.05);              color: var(--text-muted); }
-  .pill-faint   { background: rgba(255,255,255,0.03);              color: var(--text-faint); }
-
-  /* ── Print ── */
-  @page { size: A4 landscape; margin: 10mm 8mm; }
-
-  @media print {
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-    :root {
-      --bg:           #ffffff !important;
-      --surface:      #ffffff !important;
-      --surface-2:    #f5f6f8 !important;
-      --surface-3:    #eceef2 !important;
-      --border:       rgba(0,0,0,0.10) !important;
-      --border-faint: rgba(0,0,0,0.05) !important;
-      --text:         #111827 !important;
-      --text-muted:   #4b5563 !important;
-      --text-faint:   #9ca3af !important;
-      --accent:       #1d6ef5 !important;
-      --accent-dim:   rgba(29,110,245,0.10) !important;
-      --green:        #16a34a !important;
-      --green-dim:    rgba(22,163,74,0.12) !important;
-      --red:          #dc2626 !important;
-      --red-dim:      rgba(220,38,38,0.10) !important;
-      --gold:         #b45309 !important;
-      --gold-dim:     rgba(180,83,9,0.10) !important;
-    }
-
-    body { background: #fff !important; color: #111827 !important; font-size: 10px !important; min-height: unset !important; }
-
-    .sidebar, .topbar, .btn-export, .btn-toggle { display: none !important; }
-    .layout  { display: block !important; }
-    .main    { margin-left: 0 !important; display: block !important; }
-    .content { padding: 4mm 6mm !important; }
-
-    .chart-card  { background: #fff !important; border: 1px solid #e5e7eb !important; break-inside: avoid; }
-    .kpi-card    { background: #fff !important; border: 1px solid #e5e7eb !important; box-shadow: none !important; break-inside: avoid; }
-    .meta-strip  { background: #fff !important; border: 1px solid #e5e7eb !important; break-inside: avoid; }
-    .meta-item   { border-right-color: #e5e7eb !important; }
-
-    .section#sec-metrics   { break-before: page; }
-    .section#sec-tradelog  { break-before: page; }
-
-    .table-card {
-      overflow: visible !important; background: #fff !important;
-      border: 1px solid #e5e7eb !important; box-shadow: none !important; border-radius: 0 !important;
-    }
-    .tradelog-wrap { max-height: unset !important; overflow: visible !important; }
-
-    .table-card table    { font-size: 8px !important; width: 100% !important; page-break-inside: auto; }
-    .table-card thead    { display: table-header-group; }
-    .table-card tbody tr { page-break-inside: avoid; }
-    .table-card thead th {
-      background: #f5f6f8 !important; color: #4b5563 !important;
-      position: static !important; border-bottom: 1px solid #e5e7eb !important;
-    }
-    .table-card thead th,
-    .table-card tbody td { padding: 4px 6px !important; white-space: nowrap !important; }
-    .table-card tbody td            { color: #111827 !important; }
-    .table-card tbody td.label-cell { color: #111827 !important; }
-
-    .pill-green { background: #dcfce7 !important; color: #16a34a !important; }
-    .pill-red   { background: #fee2e2 !important; color: #dc2626 !important; }
-    .pill-blue  { background: #dbeafe !important; color: #1d4ed8 !important; }
-    .pill-gold  { background: #fef3c7 !important; color: #b45309 !important; }
-    .pill-grey  { background: #f3f4f6 !important; color: #6b7280 !important; }
-
-    .chart-row { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
-    .kpi-grid  { grid-template-columns: repeat(6, 1fr) !important; gap: 6px !important; }
-    .section   { margin-bottom: 10px; }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
   }
+
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .kpi-value {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+  }
+
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .positive { color: var(--green); }
+  .negative { color: var(--red); }
+  .neutral { color: var(--text); }
+  .warning { color: var(--yellow); }
+
+  /* results table */
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  thead th {
+    padding: 10px 14px;
+    text-align: right;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  thead th:first-child,
+  thead th:nth-child(2),
+  thead th:nth-child(3) { text-align: left; }
+
+  thead th:hover { color: var(--text); }
+
+  thead th.sorted-asc::after { content: " ^"; color: var(--primary); }
+  thead th.sorted-desc::after { content: " v"; color: var(--primary); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 120ms;
+    cursor: pointer;
+  }
+
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-2); }
+  tbody tr.selected { background: var(--primary-dim); }
+
+  td {
+    padding: 10px 14px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  td:first-child,
+  td:nth-child(2),
+  td:nth-child(3) {
+    text-align: left;
+    font-family: var(--font);
+    font-weight: 500;
+  }
+
+  /* filters */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+    align-items: center;
+  }
+
+  .filter-input {
+    padding: 6px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font);
+    outline: none;
+    min-width: 160px;
+  }
+
+  .filter-input:focus { border-color: var(--primary); }
+
+  .filter-label {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  /* charts grid */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+    gap: 16px;
+  }
+
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+
+  .chart-card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .chart-card-title span { color: var(--text); }
+
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* trade log */
+  .trade-log-wrap {
+    overflow-x: auto;
+    max-height: 480px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+
+  .trade-log-wrap table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  td.long { color: var(--green); }
+  td.short { color: var(--red); }
+  td.win { color: var(--green); }
+  td.loss { color: var(--red); }
+
+  /* empty state */
+  .empty {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* tab bar */
+  .tab-bar {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: color 120ms, border-color 120ms;
+  }
+
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 </style>
 </head>
 <body>
-<div class="layout">
 
-<!-- ══════════════════════════════════════════════════════════════ SIDEBAR -->
-<aside class="sidebar">
-  <div class="sidebar-brand">
-    <div class="brand-eyebrow">Research Platform</div>
-    <div class="brand-name">FX<span>Algo</span></div>
-    <div class="brand-sub" id="meta-generated">Loading...</div>
-  </div>
-  <div class="sidebar-filters">
-    <div class="filter-group">
-      <label>Currency Pair</label>
-      <select id="filter-pair" onchange="applyFilters()"></select>
-    </div>
-    <div class="filter-group">
-      <label>Strategy</label>
-      <select id="filter-strategy" onchange="applyFilters()"></select>
-    </div>
-  </div>
-  <nav class="sidebar-nav">
-    <div class="nav-label">Sections</div>
-    <div class="nav-item active"  onclick="navTo(event,'sec-overview')">  <span class="nav-dot"></span>Overview</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-equity')">    <span class="nav-dot"></span>Equity Curve</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-drawdown')">  <span class="nav-dot"></span>Drawdown</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-rolling')">   <span class="nav-dot"></span>Rolling Sharpe</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-signals')">   <span class="nav-dot"></span>Signal Distribution</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-tradelog')">  <span class="nav-dot"></span>Trade Log</div>
-    <div class="nav-item"         onclick="navTo(event,'sec-metrics')">   <span class="nav-dot"></span>Metrics Table</div>
-  </nav>
-  <div class="sidebar-footer" id="sidebar-footer">Loading...</div>
-</aside>
+<nav class="topbar">
+  <a class="topbar-logo" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+      <polyline points="16 7 22 7 22 13"/>
+    </svg>
+    FXAlgo
+  </a>
+  <span class="topbar-sep"></span>
+  <span class="topbar-meta" id="gen-stamp"></span>
+  <span id="mode-badge"></span>
+  <span id="direction-badge"></span>
+</nav>
 
-<!-- ══════════════════════════════════════════════════════════════ MAIN -->
-<div class="main">
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-title" id="report-title">FXAlgo Report</div>
-      <div class="topbar-meta"  id="report-subtitle">Loading...</div>
-    </div>
-    <div class="topbar-right">
-      <span class="badge-split bt" id="badge-split">BT</span>
-      <button class="btn-export" onclick="exportPDF()">Export PDF</button>
-    </div>
+<div class="page">
+
+  <!-- meta strip -->
+  <div class="meta-strip" id="meta-strip"></div>
+
+  <!-- KPI row -->
+  <div class="section">
+    <div class="section-title">Summary</div>
+    <div class="kpi-row" id="kpi-row"></div>
   </div>
 
-  <div class="content">
-
-    <!-- ── OVERVIEW ─────────────────────────────────────────────────── -->
-    <div class="section" id="sec-overview">
-      <div class="section-header"><div class="section-title">Overview</div><div class="section-line"></div></div>
-      <div class="meta-strip" id="meta-strip"></div>
-      <div class="kpi-grid"   id="kpi-grid"></div>
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="chart-head"><h3>Net Sharpe by Strategy</h3><p>Average across selected pairs</p></div>
-          <div id="chart-sharpe-bar" style="height:200px"></div>
-        </div>
-        <div class="chart-card">
-          <div class="chart-head"><h3>Total Return by Pair</h3><p>Net of transaction costs</p></div>
-          <div id="chart-return-bar" style="height:200px"></div>
-        </div>
-      </div>
+  <!-- results table -->
+  <div class="section">
+    <div class="section-title">Results</div>
+    <div class="filters">
+      <span class="filter-label">Filter:</span>
+      <input class="filter-input" id="filter-pair" placeholder="Pair..." oninput="filterTable()">
+      <input class="filter-input" id="filter-strategy" placeholder="Strategy..." oninput="filterTable()">
+      <input class="filter-input" id="filter-dir" placeholder="Direction..." oninput="filterTable()">
     </div>
-
-    <!-- ── EQUITY CURVE ───────────────────────────────────────────────── -->
-    <div class="section" id="sec-equity">
-      <div class="section-header">
-        <div class="section-title">Equity Curve</div>
-        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="equity-pair-label"></div>
-        <div class="section-line"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-head-row">
-          <div>
-            <h3 style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Cumulative Equity</h3>
-            <p  style="font-size:11px;color:var(--text-muted)">All strategies overlaid. X-axis: real timestamps where available.</p>
-          </div>
-          <div class="btn-toggle" id="equity-toggle">
-            <button class="active" onclick="setEquityMode('norm', this)">Norm</button>
-            <button               onclick="setEquityMode('usd',  this)">$</button>
-          </div>
-        </div>
-        <div id="chart-equity" style="height:290px"></div>
-      </div>
+    <div class="table-wrap">
+      <table id="results-table">
+        <thead>
+          <tr>
+            <th onclick="sortTable(0)">Pair</th>
+            <th onclick="sortTable(1)">Strategy</th>
+            <th onclick="sortTable(2)">Direction</th>
+            <th onclick="sortTable(3)">Sharpe</th>
+            <th onclick="sortTable(4)">Return</th>
+            <th onclick="sortTable(5)">Max DD</th>
+            <th onclick="sortTable(6)">Win Rate</th>
+            <th onclick="sortTable(7)">Trades</th>
+            <th onclick="sortTable(8)">Sortino</th>
+            <th onclick="sortTable(9)">Calmar</th>
+            <th onclick="sortTable(10)">Prof. Factor</th>
+            <th onclick="sortTable(11)">Turnover</th>
+            <th onclick="sortTable(12)">Capital Final</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
     </div>
+  </div>
 
-    <!-- ── DRAWDOWN ───────────────────────────────────────────────────── -->
-    <div class="section" id="sec-drawdown">
-      <div class="section-header">
-        <div class="section-title">Drawdown</div>
-        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="dd-pair-label"></div>
-        <div class="section-line"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-head"><h3>Underwater Equity</h3><p>Peak-to-trough drawdown over time.</p></div>
-        <div id="chart-drawdown" style="height:250px"></div>
-      </div>
+  <!-- chart tabs -->
+  <div class="section">
+    <div class="section-title">Charts</div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="switchTab('equity')">Equity Curve</div>
+      <div class="tab" onclick="switchTab('sharpe')">Rolling Sharpe</div>
+      <div class="tab" onclick="switchTab('signals')">Signal Distribution</div>
     </div>
+    <div id="tab-equity" class="charts-grid"></div>
+    <div id="tab-sharpe" class="charts-grid" style="display:none"></div>
+    <div id="tab-signals" class="charts-grid" style="display:none"></div>
+  </div>
 
-    <!-- ── ROLLING SHARPE ─────────────────────────────────────────────── -->
-    <div class="section" id="sec-rolling">
-      <div class="section-header">
-        <div class="section-title">Rolling Sharpe</div>
-        <div class="section-title" style="color:var(--accent);font-weight:600;letter-spacing:0" id="roll-pair-label"></div>
-        <div class="section-line"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-head"><h3>21-Bar Rolling Sharpe</h3><p>Annualised. Zero line marks regime boundary.</p></div>
-        <div id="chart-rolling" style="height:250px"></div>
-      </div>
+  <!-- trade log -->
+  <div class="section">
+    <div class="section-title">Trade Log</div>
+    <div class="filters">
+      <span class="filter-label">Filter:</span>
+      <input class="filter-input" id="tl-pair" placeholder="Pair..." oninput="filterTrades()">
+      <input class="filter-input" id="tl-strategy" placeholder="Strategy..." oninput="filterTrades()">
+      <input class="filter-input" id="tl-reason" placeholder="Exit reason..." oninput="filterTrades()">
+      <input class="filter-input" id="tl-dir" placeholder="Direction..." oninput="filterTrades()">
     </div>
-
-    <!-- ── SIGNAL DISTRIBUTION ────────────────────────────────────────── -->
-    <div class="section" id="sec-signals">
-      <div class="section-header"><div class="section-title">Signal Distribution</div><div class="section-line"></div></div>
-      <div class="chart-card">
-        <div class="chart-head"><h3>Long / Short / Flat Counts</h3><p>Exposes position bias per pair and strategy.</p></div>
-        <div id="chart-signals" style="height:250px"></div>
-      </div>
+    <div class="trade-log-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="text-align:left">Pair</th>
+            <th style="text-align:left">Strategy</th>
+            <th>Direction</th>
+            <th>Entry Bar</th>
+            <th>Exit Bar</th>
+            <th>Bars Held</th>
+            <th>Entry Price</th>
+            <th>Exit Price</th>
+            <th>PnL %</th>
+            <th>PnL $</th>
+            <th>Exit Reason</th>
+          </tr>
+        </thead>
+        <tbody id="trade-log-body"></tbody>
+      </table>
     </div>
+  </div>
 
-    <!-- ── TRADE LOG ──────────────────────────────────────────────────── -->
-    <div class="section" id="sec-tradelog">
-      <div class="section-header"><div class="section-title">Trade Log</div><div class="section-line"></div></div>
-      <div class="section-stat" id="tradelog-stat"></div>
-      <div class="table-card">
-        <div class="tradelog-wrap">
-          <table id="tradelog-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Pair</th>
-                <th>Strategy</th>
-                <th>Entry Time</th>
-                <th>Exit Time</th>
-                <th>Dir</th>
-                <th>Entry Px</th>
-                <th>Exit Px</th>
-                <th class="sortable" data-col="pnl_pct"     onclick="sortTradeLog('pnl_pct')">    P&amp;L % <span class="sort-arrow">↕</span></th>
-                <th class="sortable" data-col="pnl_dollars" onclick="sortTradeLog('pnl_dollars')">P&amp;L $ <span class="sort-arrow">↕</span></th>
-                <th class="sortable" data-col="bars_held"   onclick="sortTradeLog('bars_held')">  Bars Held <span class="sort-arrow">↕</span></th>
-                <th>Exit Reason</th>
-              </tr>
-            </thead>
-            <tbody id="tradelog-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── METRICS TABLE ──────────────────────────────────────────────── -->
-    <div class="section" id="sec-metrics">
-      <div class="section-header"><div class="section-title">Metrics Table</div><div class="section-line"></div></div>
-      <div class="table-card">
-        <table>
-          <thead>
-            <tr>
-              <th>Pair</th><th>Strategy</th>
-              <th>Net Sharpe</th><th>Gross Sharpe</th>
-              <th>Return</th><th>Max DD</th><th>Calmar</th>
-              <th>Win Rate</th><th>Profit Factor</th><th>Sortino</th>
-              <th>Trades</th><th>Turnover</th>
-              <th>Capital In</th><th>Capital Out</th>
-            </tr>
-          </thead>
-          <tbody id="metrics-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-  </div><!-- /content -->
-</div><!-- /main -->
-</div><!-- /layout -->
+</div><!-- /page -->
 
 <script>
 const DATA = __DATA_JSON__;
 
-const PALETTE_DARK  = ["#4f8ef7","#34d058","#f4b942","#a78bfa","#38c4d4","#fb8c4a","#f472b6"];
-const PALETTE_LIGHT = ["#1d6ef5","#16a34a","#b45309","#7c3aed","#0891b2","#ea580c","#db2777"];
+// helpers
 
-let equityMode  = "norm";   // "norm" | "usd"
-let tlSortCol   = null;
-let tlSortDir   = 1;        // 1 = asc, -1 = desc
-let isPrinting  = false;
+const fmt = {
+  pct: v => (v >= 0 ? "+" : "") + (v * 100).toFixed(2) + "%",
+  pct1: v => (v >= 0 ? "+" : "") + (v * 100).toFixed(1) + "%",
+  f4: v => (v >= 0 ? "+" : "") + v.toFixed(4),
+  f2: v => (v >= 0 ? "+" : "") + v.toFixed(2),
+  dollar: v => "$" + v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}),
+  int: v => v.toLocaleString("en-US"),
+  round2: v => v.toFixed(2),
+};
 
-// ── print replot ────────────────────────────────────────────────────────────
+function colour(v, threshold_pos, threshold_neg) {
+  if (v >= threshold_pos) return "positive";
+  if (v < threshold_neg) return "negative";
+  return "warning";
+}
 
-function replotForPrint(light) {
-  const gridCol = light ? "rgba(0,0,0,0.06)"  : "rgba(255,255,255,0.05)";
-  const lineCol = light ? "rgba(0,0,0,0.10)"  : "rgba(255,255,255,0.08)";
-  const tickCol = light ? "#4b5563"            : "#8a91a8";
-  const zeroCol = light ? "rgba(0,0,0,0.15)"  : "rgba(255,255,255,0.15)";
-  const bgCol   = light ? "#ffffff"            : "rgba(0,0,0,0)";
-  const palette = light ? PALETTE_LIGHT        : PALETTE_DARK;
+function dirLabel(dm) {
+  if (dm === "long_only") return "Long Only";
+  if (dm === "short_only") return "Short Only";
+  return "Long/Short";
+}
 
-  const axisUpd = {
-    "xaxis.gridcolor": gridCol, "xaxis.linecolor": lineCol, "xaxis.tickfont.color": tickCol,
-    "yaxis.gridcolor": gridCol, "yaxis.linecolor": lineCol, "yaxis.tickfont.color": tickCol,
-    "yaxis.zerolinecolor": zeroCol,
-    paper_bgcolor: bgCol, plot_bgcolor: bgCol,
-    "font.color": tickCol, "legend.font.color": tickCol,
-    "hoverlabel.bgcolor": light ? "#f9fafb" : "#1c2028",
-    "hoverlabel.font.color": light ? "#111827" : "#dde1ea",
-  };
+function dirBadgeClass(dm) {
+  if (dm === "long_only") return "badge-green";
+  if (dm === "short_only") return "badge-red";
+  return "badge-blue";
+}
 
-  ["chart-sharpe-bar","chart-return-bar","chart-equity",
-   "chart-drawdown","chart-rolling","chart-signals"].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el || !el._fullLayout) return;
-    Plotly.relayout(id, axisUpd);
-    (el.data || []).forEach((trace, i) => {
-      if (trace.type === "bar") {
-        if (id === "chart-sharpe-bar") {
-          Plotly.restyle(id, { "marker.color": [trace.y.map(v => v >= 0 ? (light?"#1d6ef5":"#4f8ef7") : (light?"#dc2626":"#f05252"))] }, [i]);
-        } else if (id === "chart-return-bar") {
-          Plotly.restyle(id, { "marker.color": [trace.y.map(v => v >= 0 ? (light?"#16a34a":"#34d058") : (light?"#dc2626":"#f05252"))] }, [i]);
-        } else {
-          Plotly.restyle(id, { "marker.color": [light?["#16a34a","#dc2626","#6b7280"]:["#34d058","#f05252","#454c5e"]][0][i] }, [i]);
+// chart colour palette -- cycles across results
+const PALETTE = [
+  "#3b82f6", "#22c55e", "#f59e0b", "#a855f7",
+  "#06b6d4", "#ef4444", "#84cc16", "#ec4899",
+  "#14b8a6", "#f97316", "#6366f1", "#10b981",
+];
+
+// topbar
+
+const meta = DATA.meta;
+
+document.getElementById("gen-stamp").textContent = "Generated " + meta.generated;
+
+document.getElementById("mode-badge").innerHTML =
+  `<span class="badge ${meta.mode === "simulation" ? "badge-purple" : "badge-yellow"}">
+    ${meta.mode === "simulation" ? "SIM" : "BT"}
+  </span>`;
+
+document.getElementById("direction-badge").innerHTML =
+  `<span class="badge ${dirBadgeClass(meta.direction_mode)}">${dirLabel(meta.direction_mode)}</span>`;
+
+// meta strip
+
+const ms = document.getElementById("meta-strip");
+
+function chip(label, value) {
+  return `<div class="meta-chip"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+ms.innerHTML = [
+  chip("Pairs", meta.pairs.join(", ")),
+  chip("Strategies", meta.strategies.length + " registered"),
+  chip("Split", meta.splits.join(", ")),
+  chip("Runs", DATA.results.length),
+  meta.capital_initial
+    ? chip("Capital", fmt.dollar(meta.capital_initial) +
+           (meta.capital_final_avg ? " -> " + fmt.dollar(meta.capital_final_avg) : ""))
+    : "",
+].join("");
+
+// KPI row
+
+const sharpes = DATA.results.map(r => r.metrics.net_sharpe);
+const returns = DATA.results.map(r => r.metrics.total_return);
+const dds = DATA.results.map(r => r.metrics.max_drawdown);
+const trades = DATA.results.map(r => r.metrics.n_trades);
+
+const avgSharpe = sharpes.reduce((a, b) => a + b, 0) / sharpes.length;
+const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length;
+const avgDD = dds.reduce((a, b) => a + b, 0) / dds.length;
+const totalTrades = trades.reduce((a, b) => a + b, 0);
+const posRuns = sharpes.filter(s => s >= 0).length;
+const bestIdx = sharpes.indexOf(Math.max(...sharpes));
+const worstIdx = sharpes.indexOf(Math.min(...sharpes));
+
+function kpi(label, value, cls, sub) {
+  return `<div class="kpi-card">
+    <div class="kpi-label">${label}</div>
+    <div class="kpi-value ${cls}">${value}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ""}
+  </div>`;
+}
+
+document.getElementById("kpi-row").innerHTML = [
+  kpi("Avg Net Sharpe", fmt.f4(avgSharpe), colour(avgSharpe, 0.5, 0)),
+  kpi("Avg Return", fmt.pct(avgReturn), colour(avgReturn, 0, -0.05)),
+  kpi("Avg Max DD", fmt.pct(avgDD), "negative", "lower is better"),
+  kpi("Total Trades", fmt.int(totalTrades), "neutral"),
+  kpi("Positive Runs", posRuns + " / " + DATA.results.length,
+      posRuns / DATA.results.length >= 0.5 ? "positive" : "negative"),
+  kpi("Best Sharpe",
+      fmt.f4(sharpes[bestIdx]),
+      "positive",
+      DATA.results[bestIdx].pair + " / " + DATA.results[bestIdx].strategy.slice(0, 20)),
+  kpi("Worst Sharpe",
+      fmt.f4(sharpes[worstIdx]),
+      "negative",
+      DATA.results[worstIdx].pair + " / " + DATA.results[worstIdx].strategy.slice(0, 20)),
+].join("");
+
+// results table
+
+let sortCol = 3;
+let sortAsc = false;
+let tableData = DATA.results.map((r, i) => ({
+  i,
+  pair: r.pair,
+  strategy: r.strategy,
+  dir: dirLabel(r.direction_mode),
+  sharpe: r.metrics.net_sharpe,
+  ret: r.metrics.total_return,
+  dd: r.metrics.max_drawdown,
+  wr: r.metrics.win_rate,
+  trades: r.metrics.n_trades,
+  sortino: r.metrics.sortino,
+  calmar: r.metrics.calmar,
+  pf: r.metrics.profit_factor,
+  turnover: r.metrics.turnover,
+  capfinal: r.metrics.capital_final,
+}));
+
+let selectedRow = -1;
+
+function renderTable(rows) {
+  const tbody = document.getElementById("results-body");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="13" class="empty">No results match the filter.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(d => `
+    <tr onclick="selectRow(${d.i})" id="row-${d.i}"
+        class="${selectedRow === d.i ? "selected" : ""}">
+      <td>${d.pair}</td>
+      <td>${d.strategy}</td>
+      <td><span class="badge ${dirBadgeClass(DATA.results[d.i].direction_mode)}" style="font-size:10px">${d.dir}</span></td>
+      <td class="${colour(d.sharpe, 0.5, 0)}">${fmt.f4(d.sharpe)}</td>
+      <td class="${colour(d.ret, 0, -0.05)}">${fmt.pct(d.ret)}</td>
+      <td class="negative">${fmt.pct(d.dd)}</td>
+      <td class="${colour(d.wr, 0.55, 0.45)}">${fmt.pct1(d.wr)}</td>
+      <td>${fmt.int(d.trades)}</td>
+      <td class="${colour(d.sortino, 0.5, 0)}">${fmt.f4(d.sortino)}</td>
+      <td class="${colour(d.calmar, 0.5, 0)}">${fmt.f4(d.calmar)}</td>
+      <td class="${colour(d.pf, 1.2, 1.0)}">${isFinite(d.pf) ? fmt.round2(d.pf) : "inf"}</td>
+      <td>${(d.turnover * 100).toFixed(2)}%</td>
+      <td class="${colour(d.capfinal, (d.capfinal > 10000 ? d.capfinal : 10001), 9999)}">${fmt.dollar(d.capfinal)}</td>
+    </tr>`).join("");
+}
+
+function filterTable() {
+  const p = document.getElementById("filter-pair").value.toLowerCase();
+  const s = document.getElementById("filter-strategy").value.toLowerCase();
+  const d = document.getElementById("filter-dir").value.toLowerCase();
+  const filtered = tableData.filter(r =>
+    r.pair.toLowerCase().includes(p) &&
+    r.strategy.toLowerCase().includes(s) &&
+    r.dir.toLowerCase().includes(d)
+  );
+  renderTable(sortRows(filtered));
+}
+
+function sortRows(rows) {
+  const cols = ["pair", "strategy", "dir", "sharpe", "ret", "dd", "wr", "trades", "sortino", "calmar", "pf", "turnover", "capfinal"];
+  const key = cols[sortCol];
+  return [...rows].sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (typeof av === "string") return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortAsc ? av - bv : bv - av;
+  });
+}
+
+function sortTable(col) {
+  const ths = document.querySelectorAll("#results-table thead th");
+  ths.forEach(th => { th.classList.remove("sorted-asc", "sorted-desc"); });
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = false; }
+  ths[col].classList.add(sortAsc ? "sorted-asc" : "sorted-desc");
+  filterTable();
+}
+
+function selectRow(i) {
+  selectedRow = i;
+  filterTable();
+  highlightCharts(i);
+}
+
+renderTable(sortRows(tableData));
+
+// charts
+
+const charts = {};
+
+function makeLabels(r) {
+  if (r.timestamps && r.timestamps.length === r.equity.length) {
+    return r.timestamps.map(t => t.slice(0, 16).replace("T", " "));
+  }
+  return r.equity.map((_, i) => i.toString());
+}
+
+function buildEquityCharts() {
+  const grid = document.getElementById("tab-equity");
+  grid.innerHTML = "";
+  DATA.results.forEach((r, i) => {
+    const id = "eq-" + i;
+    const col = PALETTE[i % PALETTE.length];
+    const dm = dirLabel(r.direction_mode);
+    grid.innerHTML += `
+      <div class="chart-card" id="card-eq-${i}">
+        <div class="chart-card-title">
+          <span>${r.pair} / ${r.strategy}</span>
+          <span class="badge ${dirBadgeClass(r.direction_mode)}" style="font-size:10px">${dm}</span>
+        </div>
+        <div class="chart-wrap"><canvas id="${id}"></canvas></div>
+      </div>`;
+  });
+
+  DATA.results.forEach((r, i) => {
+    const labels = makeLabels(r);
+    const data = r.equity.map(v => +((v - 1) * 100).toFixed(4));
+    const col = PALETTE[i % PALETTE.length];
+    charts["eq-" + i] = new Chart(document.getElementById("eq-" + i), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Return %",
+          data,
+          borderColor: col,
+          backgroundColor: col + "18",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => " Return: " + ctx.parsed.y.toFixed(2) + "%"
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: "#7a8599", font: { size: 10 }, maxTicksLimit: 8,
+              maxRotation: 0,
+            },
+            grid: { color: "#2a334520" },
+          },
+          y: {
+            ticks: {
+              color: "#7a8599", font: { size: 10 },
+              callback: v => v.toFixed(1) + "%",
+            },
+            grid: { color: "#2a3345" },
+          }
         }
-      } else if (trace.type === "scatter" && trace.name !== "Zero") {
-        Plotly.restyle(id, { "line.color": palette[i % palette.length] }, [i]);
-        if (trace.fill) Plotly.restyle(id, { fillcolor: palette[i % palette.length] + "22" }, [i]);
       }
     });
   });
 }
 
-window.addEventListener("beforeprint", () => { isPrinting = true;  replotForPrint(true);  });
-window.addEventListener("afterprint",  () => { isPrinting = false; replotForPrint(false); });
-
-function exportPDF() { window.print(); }
-
-// ── navigation ───────────────────────────────────────────────────────────────
-
-function navTo(e, id) {
-  document.getElementById(id).scrollIntoView({ behavior: "smooth" });
-  document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-  e.currentTarget.classList.add("active");
-}
-
-// ── filter ───────────────────────────────────────────────────────────────────
-
-function filtered() {
-  const pair  = document.getElementById("filter-pair").value;
-  const strat = document.getElementById("filter-strategy").value;
-  return DATA.results.filter(r =>
-    (pair  === "all" || r.pair     === pair) &&
-    (strat === "all" || r.strategy === strat)
-  );
-}
-
-function applyFilters() {
-  const results = filtered();
-  renderKPIs(results);
-  renderOverviewBars(results);
-  renderEquity(results);
-  renderDrawdown(results);
-  renderRolling(results);
-  renderSignals(results);
-  renderTradeLog(results);
-  renderMetricsTable(results);
-}
-
-// ── equity toggle ─────────────────────────────────────────────────────────────
-
-function setEquityMode(mode, btn) {
-  equityMode = mode;
-  document.querySelectorAll("#equity-toggle button").forEach(b => b.classList.remove("active"));
-  btn.classList.add("active");
-  renderEquity(filtered());
-}
-
-// ── plotly config + base layout ──────────────────────────────────────────────
-
-function cfg() { return { displayModeBar: false, responsive: true }; }
-
-function baseLayout(extra) {
-  return Object.assign({
-    paper_bgcolor: "rgba(0,0,0,0)",
-    plot_bgcolor:  "rgba(0,0,0,0)",
-    font:   { family: "'DM Sans', sans-serif", size: 11, color: "#8a91a8" },
-    margin: { t: 8, r: 16, b: 40, l: 58 },
-    xaxis: {
-      gridcolor: "rgba(255,255,255,0.05)", linecolor: "rgba(255,255,255,0.08)",
-      zeroline: false, tickfont: { color: "#8a91a8", size: 10 }, automargin: true,
-    },
-    yaxis: {
-      gridcolor: "rgba(255,255,255,0.05)", linecolor: "rgba(255,255,255,0.08)",
-      zeroline: false, tickfont: { color: "#8a91a8", size: 10 }, automargin: true,
-    },
-    legend: { orientation: "h", y: -0.22, x: 0, font: { size: 10, color: "#8a91a8" }, bgcolor: "rgba(0,0,0,0)" },
-    hovermode: "x unified",
-    hoverlabel: {
-      bgcolor: "#1c2028", bordercolor: "rgba(255,255,255,0.1)",
-      font: { color: "#dde1ea", size: 11, family: "'JetBrains Mono', monospace" },
-    },
-  }, extra || {});
-}
-
-// ── x-axis helper — timestamps or bar index ───────────────────────────────────
-
-function xAxis(r) {
-  return (r.timestamps && r.timestamps.length === r.equity.length)
-    ? r.timestamps
-    : Array.from({ length: r.equity.length }, (_, k) => k);
-}
-
-function xAxisLabel(r) {
-  return (r.timestamps && r.timestamps.length > 0) ? "Time (UTC)" : "Bar";
-}
-
-// ── build filters ─────────────────────────────────────────────────────────────
-
-function buildFilters() {
-  const ps = document.getElementById("filter-pair");
-  const ss = document.getElementById("filter-strategy");
-  ps.innerHTML = '<option value="all">All pairs</option>';
-  ss.innerHTML = '<option value="all">All strategies</option>';
-  DATA.meta.pairs.forEach(p => {
-    const o = document.createElement("option"); o.value = p; o.textContent = p; ps.appendChild(o);
+function buildSharpeCharts() {
+  const grid = document.getElementById("tab-sharpe");
+  grid.innerHTML = "";
+  DATA.results.forEach((r, i) => {
+    const id = "sh-" + i;
+    const col = PALETTE[i % PALETTE.length];
+    grid.innerHTML += `
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>${r.pair} / ${r.strategy}</span>
+          <span style="color:var(--text-muted);font-size:11px">21-bar rolling Sharpe</span>
+        </div>
+        <div class="chart-wrap"><canvas id="${id}"></canvas></div>
+      </div>`;
   });
-  DATA.meta.strategies.forEach(s => {
-    const o = document.createElement("option"); o.value = s; o.textContent = s; ss.appendChild(o);
-  });
-}
 
-// ── render meta ───────────────────────────────────────────────────────────────
-
-function renderMeta() {
-  const m = DATA.meta;
-
-  document.getElementById("report-title").textContent    = m.title;
-  document.getElementById("report-subtitle").textContent =
-    "Split: " + m.splits.join(", ") + "  ·  " + m.generated;
-  document.getElementById("meta-generated").textContent  = m.generated;
-
-  // badge — BT gold / SIM blue
-  const badge = document.getElementById("badge-split");
-  const isSim = m.mode === "simulation";
-  badge.textContent = isSim ? "SIM" : "BT";
-  badge.className   = "badge-split " + (isSim ? "sim" : "bt");
-
-  document.getElementById("sidebar-footer").innerHTML =
-    m.pairs.length + " pair(s)\n" +
-    m.strategies.length + " strategy\n" +
-    DATA.results.length + " run(s)";
-
-  // meta strip items
-  const items = [
-    ["Pairs",      m.pairs.join(", ")],
-    ["Strategies", m.strategies.length + " loaded"],
-    ["Split",      m.splits.join(", ").toUpperCase()],
-    ["Generated",  m.generated],
-    ["Runs",       DATA.results.length],
-  ];
-
-  // capital items — only if engine sent them
-  if (m.capital_initial != null) {
-    items.push(["Capital In",  "$" + m.capital_initial.toLocaleString("en-US", { minimumFractionDigits: 2 })]);
-  }
-  if (m.capital_final_avg != null) {
-    const diff    = m.capital_final_avg - (m.capital_initial || 0);
-    const diffStr = (diff >= 0 ? "+" : "") + "$" + Math.abs(diff).toLocaleString("en-US", { minimumFractionDigits: 2 });
-    const cls     = diff >= 0 ? "pos" : "neg";
-    items.push(["Avg Capital Out", "$" + m.capital_final_avg.toLocaleString("en-US", { minimumFractionDigits: 2 })]);
-    items.push(["Net P&L",         `<span class="mi-value ${cls}">${diffStr}</span>`]);
-  }
-
-  document.getElementById("meta-strip").innerHTML = items.map(([k, v]) =>
-    '<div class="meta-item">' +
-    '<span class="mi-label">' + k + '</span>' +
-    (v.startsWith("<span") ? v : '<span class="mi-value">' + v + '</span>') +
-    '</div>'
-  ).join("");
-}
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function avg(arr)       { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
-function fmt(v, d)      { d = d == null ? 2 : d; return v == null ? "-" : (+v).toFixed(d); }
-function pct(v, d)      { d = d == null ? 1 : d; return v == null ? "-" : (v * 100).toFixed(d) + "%"; }
-function dollar(v)      { return "$" + (+v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function safeRange(vals) {
-  if (!vals.length) return [-1, 1];
-  const mn = Math.min(...vals), mx = Math.max(...vals);
-  const pad = Math.max(Math.abs(mx - mn) * 0.25, 0.2);
-  return [mn - pad, mx + pad];
-}
-
-// ── KPIs ──────────────────────────────────────────────────────────────────────
-
-function renderKPIs(results) {
-  if (!results.length) { document.getElementById("kpi-grid").innerHTML = ""; return; }
-  const sharpes   = results.map(r => r.metrics.net_sharpe);
-  const returns   = results.map(r => r.metrics.total_return);
-  const drawdowns = results.map(r => r.metrics.max_drawdown);
-
-  const kpis = [
-    { label: "Best Net Sharpe",  value: fmt(Math.max(...sharpes)),  cls: Math.max(...sharpes) >= 0 ? "pos":"neg", card: Math.max(...sharpes) >= 0 ? "positive":"negative", sub: "single run" },
-    { label: "Avg Net Sharpe",   value: fmt(avg(sharpes)),          cls: avg(sharpes) >= 0 ? "pos":"neg",         card: avg(sharpes) >= 0 ? "positive":"negative",         sub: "across selection" },
-    { label: "Best Return",      value: pct(Math.max(...returns)),  cls: "pos", card: "positive", sub: "net of costs" },
-    { label: "Avg Max Drawdown", value: pct(avg(drawdowns)),        cls: "neg", card: "negative", sub: "avg across runs" },
-    { label: "Pairs",            value: DATA.meta.pairs.length,     cls: "",    card: "neutral",  sub: "in run" },
-    { label: "Total Runs",       value: results.length,             cls: "",    card: "neutral",  sub: "shown" },
-  ];
-
-  document.getElementById("kpi-grid").innerHTML = kpis.map(k =>
-    '<div class="kpi-card ' + k.card + '">' +
-    '<div class="kpi-label">' + k.label + '</div>' +
-    '<div class="kpi-value ' + k.cls + '">' + k.value + '</div>' +
-    '<div class="kpi-sub">' + k.sub + '</div></div>'
-  ).join("");
-}
-
-// ── overview bars ─────────────────────────────────────────────────────────────
-
-function renderOverviewBars(results) {
-  const strats = [...new Set(results.map(r => r.strategy))];
-  const pairs  = [...new Set(results.map(r => r.pair))];
-  const sVals  = strats.map(s => avg(results.filter(r => r.strategy === s).map(r => r.metrics.net_sharpe)));
-  const rPct   = pairs.map(p => +(avg(results.filter(r => r.pair === p).map(r => r.metrics.total_return)) * 100).toFixed(2));
-
-  Plotly.newPlot("chart-sharpe-bar", [{
-    type: "bar", x: strats, y: sVals, cliponaxis: false,
-    marker: { color: sVals.map(v => v >= 0 ? "#4f8ef7" : "#f05252"), opacity: 0.9 },
-    text: sVals.map(v => fmt(v, 3)), textposition: "outside",
-    textfont: { color: "#8a91a8", size: 10 },
-    hovertemplate: "<b>%{x}</b><br>Sharpe: %{y:.3f}<extra></extra>",
-  }], baseLayout({
-    margin: { t: 36, r: 20, b: 64, l: 58 },
-    yaxis:  { range: safeRange(sVals), automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
-    xaxis:  { automargin: true },
-  }), cfg());
-
-  Plotly.newPlot("chart-return-bar", [{
-    type: "bar", x: pairs, y: rPct, cliponaxis: false,
-    marker: { color: rPct.map(v => v >= 0 ? "#34d058" : "#f05252"), opacity: 0.9 },
-    text: rPct.map(v => v.toFixed(2) + "%"), textposition: "outside",
-    textfont: { color: "#8a91a8", size: 10 },
-    hovertemplate: "<b>%{x}</b><br>Return: %{y:.2f}%<extra></extra>",
-  }], baseLayout({
-    margin: { t: 36, r: 20, b: 64, l: 58 },
-    yaxis:  { ticksuffix: "%", range: safeRange(rPct), automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
-    xaxis:  { automargin: true },
-  }), cfg());
-}
-
-// ── equity curve ──────────────────────────────────────────────────────────────
-
-function renderEquity(results) {
-  const pairs = [...new Set(results.map(r => r.pair))];
-  const pair  = pairs[0] || "";
-  document.getElementById("equity-pair-label").textContent = pair;
-  const subset  = results.filter(r => r.pair === pair);
-  const useUsd  = equityMode === "usd";
-
-  Plotly.newPlot("chart-equity", subset.map((r, i) => ({
-    type: "scatter", mode: "lines", name: r.strategy,
-    x: xAxis(r),
-    y: useUsd ? r.equity_dollars : r.equity,
-    line: { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.8 },
-    hovertemplate: "<b>" + r.strategy + "</b><br>%{x}<br>" +
-                   (useUsd ? "Value: $%{y:,.2f}" : "Equity: %{y:.4f}") + "<extra></extra>",
-  })), baseLayout({
-    yaxis: {
-      title:     { text: useUsd ? "Portfolio Value (USD)" : "Equity (normalised)", font: { size: 10 } },
-      automargin: true,
-      tickprefix: useUsd ? "$" : "",
-    },
-    xaxis: { title: { text: xAxisLabel(subset[0] || {}), font: { size: 10 } }, automargin: true },
-  }), cfg());
-}
-
-// ── drawdown ──────────────────────────────────────────────────────────────────
-
-function drawdownSeries(equity) {
-  let peak = equity[0];
-  return equity.map(v => { if (v > peak) peak = v; return peak > 0 ? (v - peak) / peak : 0; });
-}
-
-function renderDrawdown(results) {
-  const pairs = [...new Set(results.map(r => r.pair))];
-  const pair  = pairs[0] || "";
-  document.getElementById("dd-pair-label").textContent = pair;
-  const subset = results.filter(r => r.pair === pair);
-
-  Plotly.newPlot("chart-drawdown", subset.map((r, i) => ({
-    type: "scatter", mode: "lines", fill: "tozeroy", name: r.strategy,
-    x: xAxis(r),
-    y: drawdownSeries(r.equity),
-    line:      { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.2 },
-    fillcolor:   PALETTE_DARK[i % PALETTE_DARK.length] + "22",
-    hovertemplate: "<b>" + r.strategy + "</b><br>%{x}<br>DD: %{y:.2%}<extra></extra>",
-  })), baseLayout({
-    yaxis: { tickformat: ".0%", zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)", automargin: true },
-    xaxis: { title: { text: xAxisLabel(subset[0] || {}), font: { size: 10 } }, automargin: true },
-  }), cfg());
-}
-
-// ── rolling sharpe ────────────────────────────────────────────────────────────
-
-function renderRolling(results) {
-  const pairs = [...new Set(results.map(r => r.pair))];
-  const pair  = pairs[0] || "";
-  document.getElementById("roll-pair-label").textContent = pair;
-  const subset = results.filter(r => r.pair === pair);
-
-  const traces = subset.map((r, i) => ({
-    type: "scatter", mode: "lines", name: r.strategy,
-    x: xAxis(r),
-    y: r.rolling_sharpe,
-    line: { color: PALETTE_DARK[i % PALETTE_DARK.length], width: 1.5 },
-    hovertemplate: "<b>" + r.strategy + "</b><br>%{x}<br>Sharpe: %{y:.2f}<extra></extra>",
-  }));
-
-  if (subset[0]) {
-    traces.push({
-      type: "scatter", mode: "lines", name: "Zero",
-      x: xAxis(subset[0]),
-      y: new Array(subset[0].rolling_sharpe.length).fill(0),
-      line: { color: "rgba(255,255,255,0.18)", width: 1, dash: "dot" },
-      showlegend: false, hoverinfo: "skip",
-    });
-  }
-
-  Plotly.newPlot("chart-rolling", traces, baseLayout({
-    yaxis: { title: { text: "Rolling Sharpe", font: { size: 10 } }, automargin: true, zeroline: true, zerolinecolor: "rgba(255,255,255,0.15)" },
-    xaxis: { title: { text: xAxisLabel(subset[0] || {}), font: { size: 10 } }, automargin: true },
-  }), cfg());
-}
-
-// ── signals ───────────────────────────────────────────────────────────────────
-
-function getSignalCount(r, key) {
-  const sd = r.signal_dist || {};
-  if (key === "Long")  return sd["Long"]  != null ? sd["Long"]  : (sd[1]  || 0);
-  if (key === "Short") return sd["Short"] != null ? sd["Short"] : (sd[-1] || 0);
-  if (key === "Flat")  return sd["Flat"]  != null ? sd["Flat"]  : (sd[0]  || 0);
-  return 0;
-}
-
-function renderSignals(results) {
-  const pairs = [...new Set(results.map(r => r.pair))];
-  Plotly.newPlot("chart-signals", [
-    { type: "bar", name: "Long",  x: pairs, marker: { color: "#34d058", opacity: 0.85 },
-      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Long"),  0)),
-      hovertemplate: "<b>%{x}</b><br>Long: %{y:,}<extra></extra>" },
-    { type: "bar", name: "Short", x: pairs, marker: { color: "#f05252", opacity: 0.85 },
-      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Short"), 0)),
-      hovertemplate: "<b>%{x}</b><br>Short: %{y:,}<extra></extra>" },
-    { type: "bar", name: "Flat",  x: pairs, marker: { color: "#454c5e", opacity: 0.9  },
-      y: pairs.map(p => results.filter(r => r.pair === p).reduce((s, r) => s + getSignalCount(r, "Flat"),  0)),
-      hovertemplate: "<b>%{x}</b><br>Flat: %{y:,}<extra></extra>" },
-  ], baseLayout({
-    barmode: "group",
-    margin:  { t: 8, r: 16, b: 50, l: 58 },
-    xaxis:   { automargin: true },
-    yaxis:   { automargin: true },
-  }), cfg());
-}
-
-// ── trade log ─────────────────────────────────────────────────────────────────
-
-const EXIT_PILL = {
-  signal:   "pill-grey",
-  tp:       "pill-green",
-  sl:       "pill-red",
-  max_hold: "pill-gold",
-  end:      "pill-faint",
-};
-
-function exitPill(reason) {
-  const cls = EXIT_PILL[reason] || "pill-grey";
-  return '<span class="pill ' + cls + '">' + reason + '</span>';
-}
-
-function tsLabel(r, barIdx) {
-  if (r.timestamps && r.timestamps[barIdx]) return r.timestamps[barIdx].replace("T", " ").replace("Z", "");
-  return "bar " + barIdx;
-}
-
-function renderTradeLog(results) {
-  // flatten all trades across filtered results, attach pair/strategy
-  let rows = [];
-  results.forEach(r => {
-    (r.trade_log || []).forEach(t => {
-      rows.push({ ...t, pair: r.pair, strategy: r.strategy, _r: r });
+  DATA.results.forEach((r, i) => {
+    const labels = makeLabels(r);
+    const data = r.rolling_sharpe.map(v => +v.toFixed(4));
+    const col = PALETTE[i % PALETTE.length];
+    charts["sh-" + i] = new Chart(document.getElementById("sh-" + i), {
+      type: "line",
+      data: {
+        labels,
+        datasets: [{
+          label: "Rolling Sharpe",
+          data,
+          borderColor: col,
+          backgroundColor: "transparent",
+          borderWidth: 1.5,
+          pointRadius: 0,
+          tension: 0.3,
+        }, {
+          label: "Zero",
+          data: data.map(() => 0),
+          borderColor: "#2a3345",
+          borderWidth: 1,
+          pointRadius: 0,
+          borderDash: [4, 4],
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: "#7a8599", font: { size: 10 }, maxTicksLimit: 8, maxRotation: 0 },
+            grid: { color: "#2a334520" },
+          },
+          y: {
+            ticks: { color: "#7a8599", font: { size: 10 } },
+            grid: { color: "#2a3345" },
+          }
+        }
+      }
     });
   });
+}
 
-  // sort if active
-  if (tlSortCol) {
-    rows.sort((a, b) => (a[tlSortCol] - b[tlSortCol]) * tlSortDir);
-  }
-
-  // stat line
-  const totalPnlPct  = rows.reduce((s, t) => s + t.pnl_pct,     0);
-  const totalPnlUsd  = rows.reduce((s, t) => s + t.pnl_dollars, 0);
-  const wins         = rows.filter(t => t.pnl_dollars > 0).length;
-  const statEl       = document.getElementById("tradelog-stat");
-  if (rows.length) {
-    const pnlCls = totalPnlUsd >= 0 ? "pos" : "neg";
-    statEl.innerHTML =
-      '<span>' + rows.length + ' trades</span>' +
-      '<span>' + wins + ' wins / ' + (rows.length - wins) + ' losses</span>' +
-      '<span class="' + pnlCls + '">Total P&L: ' + (totalPnlUsd >= 0 ? "+" : "") + dollar(totalPnlUsd) + '</span>';
-  } else {
-    statEl.innerHTML = '<span style="color:var(--text-faint)">No trades in selection.</span>';
-  }
-
-  // update sort arrows
-  document.querySelectorAll("#tradelog-table thead th.sortable").forEach(th => {
-    th.classList.remove("sort-asc", "sort-desc");
-    if (th.dataset.col === tlSortCol) {
-      th.classList.add(tlSortDir === 1 ? "sort-asc" : "sort-desc");
-      th.querySelector(".sort-arrow").textContent = tlSortDir === 1 ? "↑" : "↓";
-    } else {
-      th.querySelector(".sort-arrow").textContent = "↕";
-    }
+function buildSignalCharts() {
+  const grid = document.getElementById("tab-signals");
+  grid.innerHTML = "";
+  DATA.results.forEach((r, i) => {
+    const id = "sig-" + i;
+    const sd = r.signal_dist;
+    grid.innerHTML += `
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>${r.pair} / ${r.strategy}</span>
+          <span style="color:var(--text-muted);font-size:11px">signal events</span>
+        </div>
+        <div class="chart-wrap" style="height:160px"><canvas id="${id}"></canvas></div>
+      </div>`;
   });
 
-  document.getElementById("tradelog-tbody").innerHTML = rows.map((t, idx) => {
-    const pnlPctCls = t.pnl_pct    >= 0 ? "style='color:var(--green)'" : "style='color:var(--red)'";
-    const pnlUsdCls = t.pnl_dollars >= 0 ? "style='color:var(--green)'" : "style='color:var(--red)'";
-    const dirPill   = t.direction === 1
-      ? '<span class="pill pill-green">LONG</span>'
-      : '<span class="pill pill-red">SHORT</span>';
-    return "<tr>" +
-      "<td>" + (idx + 1) + "</td>" +
-      '<td class="label-cell">' + t.pair     + "</td>" +
-      '<td class="label-cell">' + t.strategy + "</td>" +
-      "<td>" + tsLabel(t._r, t.entry_bar) + "</td>" +
-      "<td>" + tsLabel(t._r, t.exit_bar)  + "</td>" +
-      "<td>" + dirPill + "</td>" +
-      "<td>" + t.entry_price + "</td>" +
-      "<td>" + t.exit_price  + "</td>" +
-      "<td " + pnlPctCls + ">" + (t.pnl_pct >= 0 ? "+" : "") + fmt(t.pnl_pct, 3) + "%</td>" +
-      "<td " + pnlUsdCls + ">" + (t.pnl_dollars >= 0 ? "+" : "") + dollar(t.pnl_dollars) + "</td>" +
-      "<td>" + t.bars_held + "</td>" +
-      "<td>" + exitPill(t.exit_reason) + "</td>" +
-      "</tr>";
-  }).join("");
+  DATA.results.forEach((r, i) => {
+    const sd = r.signal_dist;
+    charts["sig-" + i] = new Chart(document.getElementById("sig-" + i), {
+      type: "bar",
+      data: {
+        labels: ["Long", "Short", "Flat"],
+        datasets: [{
+          data: [sd.Long || 0, sd.Short || 0, sd.Flat || 0],
+          backgroundColor: ["#22c55e80", "#ef444480", "#3b82f640"],
+          borderColor: ["#22c55e", "#ef4444", "#3b82f6"],
+          borderWidth: 1,
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: "#7a8599", font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: "#7a8599", font: { size: 10 } }, grid: { color: "#2a3345" } }
+        }
+      }
+    });
+  });
 }
 
-function sortTradeLog(col) {
-  if (tlSortCol === col) {
-    tlSortDir *= -1;
-  } else {
-    tlSortCol = col;
-    tlSortDir = -1;   // default: best first (desc)
+function highlightCharts(i) {
+  Object.keys(charts).forEach(key => {
+    const chart = charts[key];
+    if (!chart) return;
+    const isSelected = key.endsWith("-" + i);
+    chart.data.datasets[0].borderWidth = isSelected ? 2.5 : 1.5;
+    chart.update("none");
+  });
+  const card = document.getElementById("card-eq-" + i);
+  if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// tab switching
+function switchTab(name) {
+  ["equity", "sharpe", "signals"].forEach(t => {
+    document.getElementById("tab-" + t).style.display = (t === name) ? "grid" : "none";
+  });
+  document.querySelectorAll(".tab").forEach((el, i) => {
+    el.classList.toggle("active", ["equity", "sharpe", "signals"][i] === name);
+  });
+}
+
+buildEquityCharts();
+buildSharpeCharts();
+buildSignalCharts();
+
+// trade log
+
+const allTrades = DATA.results.flatMap(r => r.trade_log);
+
+function renderTrades(rows) {
+  const tbody = document.getElementById("trade-log-body");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty">No trades match the filter.</td></tr>`;
+    return;
   }
-  renderTradeLog(filtered());
-}
-
-// ── metrics table ─────────────────────────────────────────────────────────────
-
-function sharpePill(v) {
-  if (v >= 1.0) return '<span class="pill pill-green">' + fmt(v) + '</span>';
-  if (v >= 0.0) return '<span class="pill pill-blue">'  + fmt(v) + '</span>';
-  return '<span class="pill pill-red">' + fmt(v) + '</span>';
-}
-
-function renderMetricsTable(results) {
-  const sorted = [...results].sort((a, b) => b.metrics.net_sharpe - a.metrics.net_sharpe);
-  document.getElementById("metrics-tbody").innerHTML = sorted.map(r => {
-    const m   = r.metrics;
-    const rc  = m.total_return >= 0 ? "var(--green)" : "var(--red)";
-    const wr  = m.win_rate === 0 && m.n_trades > 0
-      ? '<span style="color:var(--red)">0.0%</span>'
-      : pct(m.win_rate);
-    const capIn  = m.capital_initial != null ? dollar(m.capital_initial) : "-";
-    const capOut = m.capital_final   != null ? dollar(m.capital_final)   : "-";
-    const capOutCls = m.capital_final >= m.capital_initial ? "var(--green)" : "var(--red)";
-    return "<tr>" +
-      '<td class="label-cell">' + r.pair     + "</td>" +
-      '<td class="label-cell">' + r.strategy + "</td>" +
-      "<td>" + sharpePill(m.net_sharpe)                                + "</td>" +
-      "<td>" + fmt(m.gross_sharpe)                                     + "</td>" +
-      "<td style='color:" + rc + "'>" + pct(m.total_return)            + "</td>" +
-      "<td style='color:var(--red)'>" + pct(m.max_drawdown)            + "</td>" +
-      "<td>" + fmt(m.calmar)                                           + "</td>" +
-      "<td>" + wr                                                      + "</td>" +
-      "<td>" + fmt(m.profit_factor)                                    + "</td>" +
-      "<td>" + fmt(m.sortino)                                          + "</td>" +
-      "<td>" + m.n_trades.toLocaleString()                             + "</td>" +
-      "<td>" + pct(m.turnover)                                         + "</td>" +
-      "<td>" + capIn                                                   + "</td>" +
-      "<td style='color:" + capOutCls + "'>" + capOut                  + "</td>" +
-      "</tr>";
+  tbody.innerHTML = rows.slice(0, 2000).map(t => {
+    const isLong = t.direction === 1;
+    const isWin = t.pnl_pct >= 0;
+    return `<tr>
+      <td style="text-align:left">${t.pair}</td>
+      <td style="text-align:left">${t.strategy.slice(0, 28)}</td>
+      <td class="${isLong ? "long" : "short"}">${isLong ? "Long" : "Short"}</td>
+      <td>${t.entry_bar}</td>
+      <td>${t.exit_bar}</td>
+      <td>${t.bars_held}</td>
+      <td>${t.entry_price}</td>
+      <td>${t.exit_price}</td>
+      <td class="${isWin ? "win" : "loss"}">${(t.pnl_pct >= 0 ? "+" : "") + t.pnl_pct.toFixed(4)}%</td>
+      <td class="${isWin ? "win" : "loss"}">${(t.pnl_dollars >= 0 ? "+" : "") + "$" + Math.abs(t.pnl_dollars).toFixed(2)}</td>
+      <td>${t.exit_reason}</td>
+    </tr>`;
   }).join("");
+
+  if (rows.length > 2000) {
+    tbody.innerHTML += `<tr><td colspan="11" class="empty" style="padding:12px">
+      Showing first 2,000 of ${rows.length.toLocaleString()} trades.
+    </td></tr>`;
+  }
 }
 
-// ── init ──────────────────────────────────────────────────────────────────────
-
-function init() {
-  buildFilters();
-  renderMeta();
-  applyFilters();
+function filterTrades() {
+  const p = document.getElementById("tl-pair").value.toLowerCase();
+  const s = document.getElementById("tl-strategy").value.toLowerCase();
+  const r = document.getElementById("tl-reason").value.toLowerCase();
+  const d = document.getElementById("tl-dir").value.toLowerCase();
+  renderTrades(allTrades.filter(t =>
+    t.pair.toLowerCase().includes(p) &&
+    t.strategy.toLowerCase().includes(s) &&
+    (t.exit_reason || "").toLowerCase().includes(r) &&
+    (t.direction === 1 ? "long" : "short").includes(d)
+  ));
 }
 
-init();
+renderTrades(allTrades);
 </script>
 </body>
 </html>
