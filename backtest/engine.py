@@ -12,22 +12,22 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 @dataclass
 class BacktestResult:
-    # ── identity ──────────────────────────────────────────────────────────────
+    #  identity
     pair:           str
     strategy:       str
     split:          str
     mode:           str = "research"   # "research" | "simulation"
 
-    # ── time-series ───────────────────────────────────────────────────────────
+    #   time-series
     equity:         List[float] = field(default_factory=list)
-    equity_dollars: List[float] = field(default_factory=list)   # capital × equity
+    equity_dollars: List[float] = field(default_factory=list)
     rolling_sharpe: List[float] = field(default_factory=list)
-    timestamps:     List[str]   = field(default_factory=list)   # ISO-8601 strings
+    timestamps:     List[str]   = field(default_factory=list)   # ISO-8601
 
-    # ── signals ───────────────────────────────────────────────────────────────
+    #  signals
     signal_dist:    dict = field(default_factory=dict)
 
-    # ── scalar metrics ────────────────────────────────────────────────────────
+    #  scalar metrics
     net_sharpe:     float = 0.0
     gross_sharpe:   float = 0.0
     total_return:   float = 0.0
@@ -41,20 +41,39 @@ class BacktestResult:
     n_trades:       int   = 0
     spread_pips:    float = 0.0
 
-    # ── capital ───────────────────────────────────────────────────────────────
+    #  capital
     capital_initial: float = 10_000.0
     capital_final:   float = 10_000.0
 
-    # ── trade log ─────────────────────────────────────────────────────────────
+    #  trade log
     trade_log: List[dict] = field(default_factory=list)
     # Each entry: {entry_bar, exit_bar, direction, entry_price, exit_price,
     #              pnl_pct, pnl_dollars, bars_held, exit_reason}
 
-    # ── fold (CV only) ────────────────────────────────────────────────────────
+    #  fold (CV only)
     fold_index: Optional[int] = None
 
+    #  metrics dict property — consumed by report template
+    @property
+    def metrics(self) -> dict:
+        return {
+            "net_sharpe":      self.net_sharpe,
+            "gross_sharpe":    self.gross_sharpe,
+            "total_return":    self.total_return,
+            "max_drawdown":    self.max_drawdown,
+            "calmar":          self.calmar,
+            "win_rate":        self.win_rate,
+            "profit_factor":   self.profit_factor,
+            "avg_trade_bars":  self.avg_trade_bars,
+            "turnover":        self.turnover,
+            "sortino":         self.sortino,
+            "n_trades":        self.n_trades,
+            "capital_initial": self.capital_initial,
+            "capital_final":   self.capital_final,
+        }
 
-# ── constants ─────────────────────────────────────────────────────────────────
+
+#  constants
 
 PAIRS = ["EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD"]
 
@@ -78,11 +97,19 @@ SPREAD_TABLE: dict[str, float] = {
     "NZDUSD": 1.8,
 }
 
+# Session windows — inclusive start, exclusive end (UTC hour)
+SESSION_HOURS: dict[str, tuple[int, int]] = {
+    "london": (7,  16),
+    "ny":     (13, 22),
+    "tokyo":  (23,  8),   # wraps midnight
+    "sydney": (21,  6),   # wraps midnight
+}
+
 TRADING_DAYS = 252
 BARS_PER_DAY = 1440
 
 
-# ── validation ────────────────────────────────────────────────────────────────
+# validation
 
 def _validate_inputs(signals: pd.Series, prices: pd.Series, pair: str) -> None:
     if pair not in PAIRS:
@@ -93,7 +120,73 @@ def _validate_inputs(signals: pd.Series, prices: pd.Series, pair: str) -> None:
         raise ValueError("signals and prices must not contain NaN.")
 
 
-# ── metrics ───────────────────────────────────────────────────────────────────
+#  session mask
+
+def _session_mask(timestamps: list[str], session: str) -> pd.Series:
+    """
+    Returns a boolean Series — True where the bar falls inside the session.
+    Handles sessions that wrap midnight (tokyo, sydney).
+    """
+    if session not in SESSION_HOURS:
+        raise ValueError(
+            f"Unknown session '{session}'. Valid: {list(SESSION_HOURS)}"
+        )
+
+    hours = pd.to_datetime(timestamps, utc=True).hour
+    start, end = SESSION_HOURS[session]
+
+    if start < end:
+        # normal window — e.g. london 07:00–16:00
+        mask = (hours >= start) & (hours < end)
+    else:
+        # wraps midnight — e.g. tokyo 23:00–08:00
+        mask = (hours >= start) | (hours < end)
+
+    return pd.Series(mask, dtype=bool)
+
+
+#  entry-time mask
+
+def _entry_time_mask(timestamps: list[str], entry_time: str) -> pd.Series:
+    """
+    Returns a boolean Series — True where the bar's UTC time >= entry_time.
+    Evaluated per-bar (not per-day), so it simply gates bars before the
+    specified hour:minute each day.
+    """
+    dt      = pd.to_datetime(timestamps, utc=True)
+    h, m    = map(int, entry_time.split(":"))
+    minutes = dt.hour * 60 + dt.minute
+    cutoff  = h * 60 + m
+    return pd.Series(minutes >= cutoff, dtype=bool)
+
+
+#  resampler
+
+def _resample(
+    signals:    pd.Series,
+    prices:     pd.Series,
+    timestamps: list[str],
+    freq:       str,
+) -> tuple[pd.Series, pd.Series, list[str]]:
+    """
+    Resamples signals (last), prices (last), and timestamps to `freq`.
+    Returns new (signals, prices, timestamps).
+    """
+    idx = pd.to_datetime(timestamps, utc=True)
+    df  = pd.DataFrame(
+        {"signal": signals.values, "price": prices.values},
+        index=idx,
+    )
+    rs  = df.resample(freq).last().dropna()
+
+    new_signals    = pd.Series(rs["signal"].values, dtype=float)
+    new_prices     = pd.Series(rs["price"].values,  dtype=float)
+    new_timestamps = rs.index.strftime("%Y-%m-%dT%H:%M:%SZ").tolist()
+
+    return new_signals, new_prices, new_timestamps
+
+
+#  metrics
 
 def _compute_metrics(
     net_returns:   pd.Series,
@@ -156,8 +249,8 @@ def _compute_metrics(
         tp_price  = (entry_px + direction * tp_pips * pip) if tp_pips else None
         sl_price  = (entry_px - direction * sl_pips * pip) if sl_pips else None
 
-        j         = i + 1
-        exit_bar  = n - 1
+        j           = i + 1
+        exit_bar    = n - 1
         exit_reason = "end"
 
         while j < n:
@@ -195,8 +288,8 @@ def _compute_metrics(
         duration = exit_bar - entry_bar + 1
         durations.append(duration)
 
-        exit_px      = float(px_arr[exit_bar])
-        pnl_dollars  = capital * trade_net_ret
+        exit_px     = float(px_arr[exit_bar])
+        pnl_dollars = capital * trade_net_ret
 
         trade_log.append({
             "entry_bar":   entry_bar,
@@ -222,40 +315,40 @@ def _compute_metrics(
     profit_factor  = sum(wins) / sum(losses) if losses else (float("inf") if wins else 0.0)
     avg_trade_bars = float(np.mean(durations)) if durations else 0.0
 
-    signal_changes = int((positions.diff().fillna(0) != 0).sum())
-    turnover       = signal_changes / n_bars if n_bars > 0 else 0.0
+    signal_changes     = int((positions.diff().fillna(0) != 0).sum())
+    turnover           = signal_changes / n_bars if n_bars > 0 else 0.0
 
-    equity_list        = equity.tolist()
+    equity_list         = equity.tolist()
     equity_dollars_list = [round(capital * v, 2) for v in equity_list]
     capital_final       = equity_dollars_list[-1] if equity_dollars_list else capital
 
     return {
-        "net_sharpe":       net_sharpe,
-        "gross_sharpe":     gross_sharpe,
-        "total_return":     total_return,
-        "max_drawdown":     max_dd,
-        "calmar":           calmar,
-        "win_rate":         win_rate,
-        "profit_factor":    profit_factor,
-        "avg_trade_bars":   avg_trade_bars,
-        "turnover":         turnover,
-        "sortino":          sortino,
-        "n_trades":         n_trades,
-        "equity":           equity_list,
-        "equity_dollars":   equity_dollars_list,
-        "capital_final":    capital_final,
-        "trade_log":        trade_log,
+        "net_sharpe":     net_sharpe,
+        "gross_sharpe":   gross_sharpe,
+        "total_return":   total_return,
+        "max_drawdown":   max_dd,
+        "calmar":         calmar,
+        "win_rate":       win_rate,
+        "profit_factor":  profit_factor,
+        "avg_trade_bars": avg_trade_bars,
+        "turnover":       turnover,
+        "sortino":        sortino,
+        "n_trades":       n_trades,
+        "equity":         equity_list,
+        "equity_dollars": equity_dollars_list,
+        "capital_final":  capital_final,
+        "trade_log":      trade_log,
     }
 
 
-# ── public run_backtest ───────────────────────────────────────────────────────
+#  public run_backtest
 
 def run_backtest(
     signals:         pd.Series,
     prices:          pd.Series,
     pair:            str,
     strategy:        str,
-    split:           str           = "val",
+    split:           str             = "val",
     spread_pips:     Optional[float] = None,
     tp_pips:         Optional[float] = None,
     sl_pips:         Optional[float] = None,
@@ -265,10 +358,29 @@ def run_backtest(
     max_hold_bars:   Optional[int]   = None,
     timestamps:      Optional[list]  = None,
     session:         Optional[str]   = None,
+    entry_time:      Optional[str]   = None,   # "HH:MM" UTC
+    resample:        Optional[str]   = None,   # pandas offset e.g. "1H", "4H"
     mode:            str             = "research",
 ) -> BacktestResult:
     _validate_inputs(signals, prices, pair)
 
+    ts = list(timestamps) if timestamps else []
+
+    #  resample to coarser timeframe before any filtering
+    if resample and ts:
+        signals, prices, ts = _resample(signals, prices, ts, resample)
+
+    #  session filter — zero out signals outside window
+    if session and ts:
+        in_session = _session_mask(ts, session)
+        signals    = signals.where(in_session.values, other=0)
+
+    #  entry-time filter — zero out bars before daily entry cutoff
+    if entry_time and ts:
+        after_entry = _entry_time_mask(ts, entry_time)
+        signals     = signals.where(after_entry.values, other=0)
+
+    #  position sizing + cost model
     spread = spread_pips if spread_pips is not None else SPREAD_TABLE[pair]
     pip    = PIP_SIZE[pair]
 
@@ -319,7 +431,7 @@ def run_backtest(
         equity           = metrics["equity"],
         equity_dollars   = metrics["equity_dollars"],
         rolling_sharpe   = rolling_sh.tolist(),
-        timestamps       = timestamps or [],
+        timestamps       = ts,
         signal_dist      = signal_dist,
         net_sharpe       = metrics["net_sharpe"],
         gross_sharpe     = metrics["gross_sharpe"],
@@ -339,12 +451,12 @@ def run_backtest(
     )
 
 
-# ── walk-forward CV ───────────────────────────────────────────────────────────
+#  walk-forward CV
 
 def run_wf_folds(
     pair:        str,
     strategy:    str,
-    n_folds:     int            = 5,
+    n_folds:     int             = 5,
     spread_pips: Optional[float] = None,
     tp_pips:     Optional[float] = None,
     sl_pips:     Optional[float] = None,
@@ -391,7 +503,7 @@ def run_wf_folds(
     return results
 
 
-# ── smoke test ────────────────────────────────────────────────────────────────
+#  smoke test
 
 if __name__ == "__main__":
     import random
@@ -407,10 +519,15 @@ if __name__ == "__main__":
     sig.iloc[600:610] =  0
     sig.iloc[610:900] =  1
 
+    # smoke with session + entry_time (no timestamps so filters silently skip)
     result = run_backtest(
         sig, px,
-        pair="EURUSD", strategy="SmokeTest", split="val",
-        capital_initial=10_000.0,
+        pair            = "EURUSD",
+        strategy        = "SmokeTest",
+        split           = "val",
+        capital_initial = 10_000.0,
+        session         = "london",
+        entry_time      = "09:00",
     )
 
     print(f"Pair:           {result.pair}")
@@ -421,4 +538,5 @@ if __name__ == "__main__":
     print(f"Capital Final:  ${result.capital_final:,.2f}")
     print(f"N Trades:       {result.n_trades}")
     print(f"Trade Log rows: {len(result.trade_log)}")
+    print(f"Metrics dict:   {list(result.metrics.keys())}")
     print("Smoke test passed.")
