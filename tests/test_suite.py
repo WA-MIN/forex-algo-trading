@@ -1,6 +1,5 @@
 """
 Forex Algo Trading — Comprehensive Test Suite
-==============================================
 Runs entirely in-memory (no parquet files required).
 All results are written to  tests/test_results.txt
 
@@ -8,21 +7,6 @@ Usage
 -----
     python tests/test_suite.py
     python tests/test_suite.py -v          # verbose (print each test name live)
-
-Coverage
---------
-  Group A  — engine helpers  (_sharpe, _sortino, _max_drawdown, _rolling_sharpe)
-  Group B  — run_backtest core  (equity curve, metrics, trade log)
-  Group C  — exit logic  (TP / SL / MAX_HOLD / SIGNAL_FLIP / END_OF_DATA)
-  Group D  — direction modes  (long_short / long_only / short_only)
-  Group E  — session & entry-time filters
-  Group F  — spread mechanics
-  Group G  — all 13 strategies  (signal validity, warm-up zeroing, crossover events)
-  Group H  — strategy constructor validation  (bad params raise ValueError)
-  Group I  — BacktestResult dataclass  (metrics dict, defaults)
-  Group J  — data loader  (split path resolution, date filter, empty-range error)
-  Group K  — run_backtest edge cases  (single bar, all-zero signals, flat prices)
-  Group L  — walk-forward fold slicing  (correct sizes, independent results)
 """
 
 from __future__ import annotations
