@@ -1,4 +1,4 @@
-from __future__ import annotations # I adeded a comment over here
+from __future__ import annotations 
 
 import argparse
 import logging
@@ -58,7 +58,7 @@ LOG_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
 
 @dataclass(frozen=True)
 class PairInput:
-    """Container for one canonical FX parquet file descriptor."""
+    """Container for canonical FX parquet file descriptor."""
     pair: str
     dataset_tag: str
     parquet_path: Path
@@ -82,7 +82,6 @@ def save_plot(path: Path, dpi: int) -> None:
 
 
 def positive_int(value: str) -> int:
-    """Custom argparse type: reject zero and negative integers."""
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("Value must be a positive integer.")
@@ -90,7 +89,6 @@ def positive_int(value: str) -> int:
 
 
 def fraction_0_1(value: str) -> float:
-    """Custom argparse type: accept floats in (0, 1] only."""
     parsed = float(value)
     if parsed <= 0 or parsed > 1:
         raise argparse.ArgumentTypeError("Value must be in the range (0, 1].")
@@ -137,7 +135,7 @@ def configure_logging() -> None:
 
 
 def parse_pair_input(path: Path) -> PairInput:
-    """Parse pair code and dataset tag from filename. Expected: PAIR_TAG.parquet"""
+    """Parse pair code and dataset tag from filename."""
     stem = path.stem
     if "_" not in stem:
         raise ValueError(
@@ -157,7 +155,7 @@ def discover_pair_inputs(
     parquet_dir: Path,
     selected_pairs: list[str] | None = None,
 ) -> list[PairInput]:
-    """Scan parquet_dir for canonical files, optionally filtered by pair list."""
+    """Scan parquet_dir for canonical files."""
     if not parquet_dir.exists():
         raise FileNotFoundError(f"Missing parquet directory: {parquet_dir}")
 
@@ -209,7 +207,7 @@ def load_pair_parquet(pair_input: PairInput) -> pd.DataFrame:
 
 
 def build_snapshot(pair_input: PairInput, df: pd.DataFrame, sample_frac: float, force: bool) -> Path:
-    """Write immutable raw snapshot and a random sample parquet (random_state=42)."""
+    """Write immutable raw snapshot and a random sample parquet."""
     snapshot_path = snapshot_path_for(pair_input)
     sample_path = sample_path_for(pair_input)
 
@@ -232,7 +230,7 @@ def add_eda_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["ret_1"] = out["close"].pct_change()
 
-    # mask non-positive close before log to avoid -inf / NaN propagation
+    # Mask non-positive close before log to avoid -inf / NaN propagation
     close_positive = out["close"].where(out["close"] > 0)
     out["log_ret_1"] = np.log(close_positive).diff()
 
@@ -359,11 +357,7 @@ def compute_returns_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def simple_acf(series: pd.Series, nlags: int) -> pd.DataFrame:
-    """
-    Compute sample autocorrelation up to nlags using the biased estimator.
-    Normalised by lag-0 autocovariance (np.dot(x, x)).
-    Returns a DataFrame with columns [lag, acf].
-    """
+    """Compute sample autocorrelation up to nlags using the biased estimator."""
     x = series.dropna().astype("float64").to_numpy()
     if len(x) < 3:
         return pd.DataFrame({"lag": [], "acf": []})
@@ -479,7 +473,7 @@ def plot_scatter(x: pd.Series, y: pd.Series, title: str, xlabel: str, ylabel: st
 
 
 def run_pair_eda(pair_input: PairInput, df: pd.DataFrame, dpi: int, force: bool) -> None:
-    """Run all per-pair EDA: compute tables, save CSVs, generate plots."""
+    """Run all per-pair EDA."""
     report_dir = ensure_dir(REPORTS_DIR / pair_input.pair)
 
     df = df.copy()
@@ -613,10 +607,7 @@ def run_pair_eda(pair_input: PairInput, df: pd.DataFrame, dpi: int, force: bool)
 
 
 def run_global_eda(pair_inputs: list[PairInput], dpi: int, force: bool) -> None:
-    """
-    Compute cross-pair return and volatility correlations, save CSVs and heatmaps.
-    Merges on inner join so only timestamps present in all pairs are used.
-    """
+    """Compute cross-pair return and volatility correlations."""
     if not pair_inputs:
         logging.warning("Skipping global EDA because no valid pair inputs were processed.")
         return
