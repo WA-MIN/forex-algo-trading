@@ -7,19 +7,11 @@ import pandas as pd
 
 
 class BaseStrategy(ABC):
-    """All strategies must implement generate_signals."""
 
     name: str = ""
 
     @abstractmethod
     def generate_signals(self, prices: pd.DataFrame) -> pd.Series:
-        """
-        Accepts a cleaned OHLCV DataFrame, returns an integer signal Series.
-        Values: 1 (long), -1 (short), 0 (flat). Same index as prices.
-
-        Signals are crossover events, not continuous positions. The engine
-        forward-fills these into held positions internally. Do not forward-fill here.
-        """
         ...
 
     def __repr__(self) -> str:
@@ -27,19 +19,7 @@ class BaseStrategy(ABC):
 
 
 class MACrossover(BaseStrategy):
-    """
-    Dual moving average crossover.
-
-    Fires +1 when fast MA crosses up through slow MA.
-    Fires -1 when fast MA crosses down through slow MA.
-    Returns 0 on all other bars and during warm-up.
-
-    Parameters
-    ----------
-    fast    : look-back for fast MA (default 20).
-    slow    : look-back for slow MA (default 50).
-    ma_type : 'ema' (default) or 'sma'.
-    """
+    """Dual moving average crossover."""
 
     name = "MACrossover"
 
@@ -75,17 +55,7 @@ class MACrossover(BaseStrategy):
 
 
 class MomentumStrategy(BaseStrategy):
-    """
-    Price momentum via rolling high/low breakout.
-
-    Fires +1 when close breaks above the n-bar rolling high.
-    Fires -1 when close breaks below the n-bar rolling low.
-    Returns 0 during warm-up and when neither condition is met.
-
-    Parameters
-    ----------
-    lookback : bars to look back for high/low comparison (default 60).
-    """
+    """Price momentum via rolling high/low breakout."""
 
     name = "Momentum"
 
@@ -111,19 +81,7 @@ class MomentumStrategy(BaseStrategy):
 
 
 class DonchianBreakout(BaseStrategy):
-    """
-    Donchian channel breakout.
-
-    Fires +1 when close breaks above the highest high of the last `period`
-    bars (excluding current bar).
-    Fires -1 when close breaks below the lowest low of the last `period`
-    bars (excluding current bar).
-    Returns 0 during warm-up and when neither condition fires.
-
-    Parameters
-    ----------
-    period : channel look-back in bars (default 20).
-    """
+    """Donchian channel breakout."""
 
     name = "Donchian"
 
@@ -154,21 +112,7 @@ class DonchianBreakout(BaseStrategy):
 
 
 class RSIMeanReversion(BaseStrategy):
-    """
-    RSI threshold crossover for mean reversion.
-
-    Fires +1 when RSI crosses up through the oversold level.
-    Fires -1 when RSI crosses down through the overbought level.
-    Returns 0 on all other bars and during warm-up.
-
-    RSI uses Wilder smoothing (ewm alpha = 1/period). No external TA library.
-
-    Parameters
-    ----------
-    period     : RSI look-back (default 14).
-    oversold   : lower threshold -- long entry on cross up (default 30).
-    overbought : upper threshold -- short entry on cross down (default 70).
-    """
+    """RSI threshold crossover for mean reversion."""
 
     name = "RSI"
 
@@ -216,18 +160,7 @@ class RSIMeanReversion(BaseStrategy):
 
 
 class BollingerBreakout(BaseStrategy):
-    """
-    Bollinger Band volatility breakout.
-
-    Fires +1 when close crosses up through the upper band.
-    Fires -1 when close crosses down through the lower band.
-    Returns 0 on all other bars and during warm-up.
-
-    Parameters
-    ----------
-    period  : rolling window for mean and std (default 20).
-    std_dev : band width in standard deviations (default 2.0).
-    """
+    """Bollinger Band volatility breakout."""
 
     name = "BB"
 
@@ -261,24 +194,7 @@ class BollingerBreakout(BaseStrategy):
 
 
 class MACDSignalCross(BaseStrategy):
-    """
-    MACD line crosses signal line.
-
-    Fires +1 when MACD line crosses up through the signal line.
-    Fires -1 when MACD line crosses down through the signal line.
-    Returns 0 on all other bars and during warm-up.
-
-    MACD line   = EMA(fast) - EMA(slow)
-    Signal line = EMA(MACD line, signal_period)
-
-    No external TA library -- computed via pandas ewm.
-
-    Parameters
-    ----------
-    fast          : fast EMA period (default 12).
-    slow          : slow EMA period (default 26).
-    signal_period : signal line EMA period (default 9).
-    """
+    """MACD line crosses signal line."""
 
     name = "MACD"
 
