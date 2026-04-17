@@ -1,12 +1,10 @@
 """
-Forex Algo Trading — Comprehensive Test Suite
-Runs entirely in-memory (no parquet files required).
+Forex Algo Trading 
 All results are written to  tests/test_results.txt
 
 Usage
------
     python tests/test_suite.py
-    python tests/test_suite.py -v          # verbose (print each test name live)
+    python tests/test_suite.py -v    
 """
 
 from __future__ import annotations
@@ -22,9 +20,7 @@ from typing     import Any, Callable, List, Tuple
 import numpy  as np
 import pandas as pd
 
-# ---------------------------------------------------------------------------
 # Path setup — allow running from project root or tests/
-# ---------------------------------------------------------------------------
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
@@ -41,9 +37,7 @@ from backtest.strategies import (
     STRATEGY_REGISTRY, get_strategy,
 )
 
-# ---------------------------------------------------------------------------
 # Test harness
-# ---------------------------------------------------------------------------
 
 RESULTS_FILE = PROJECT_DIR / "tests" / "test_results.txt"
 
@@ -95,9 +89,7 @@ class TestRunner:
         return passed, failed, errors
 
 
-# ---------------------------------------------------------------------------
 # Fixtures — synthetic price data
-# ---------------------------------------------------------------------------
 
 def _make_prices(
     n: int = 500,
@@ -170,9 +162,7 @@ def _run_simple(
     )
 
 
-# ===========================================================================
 # Group A — engine helpers
-# ===========================================================================
 
 def test_sharpe_zero_std():
     arr = np.zeros(100)
@@ -214,7 +204,7 @@ def test_sortino_uses_full_array():
     """Sortino should be lower when computed on full array vs nonzero-only."""
     rng      = np.random.default_rng(6)
     full_arr = rng.normal(0.0002, 0.001, 10_000)
-    # add 9000 zero bars (idle periods)
+    # add 9000 zero bars
     padded   = np.concatenate([full_arr[:1000], np.zeros(9000)])
     s_full   = _sortino(padded)
     s_nonzero = _sortino(padded[padded != 0])
@@ -252,7 +242,7 @@ def test_rolling_sharpe_length():
 def test_rolling_sharpe_first_bars_zero():
     arr = np.random.default_rng(9).normal(0, 0.001, 100)
     rs  = _rolling_sharpe(arr, window=20)
-    # first bar must be 0 (single element window)
+    # first bar must be 0
     assert rs[0] == 0.0, f"first rolling Sharpe should be 0, got {rs[0]}"
 
 def test_rolling_sharpe_constant_zero():
@@ -260,10 +250,7 @@ def test_rolling_sharpe_constant_zero():
     rs  = _rolling_sharpe(arr, window=20)
     assert all(v == 0.0 for v in rs)
 
-
-# ===========================================================================
 # Group B — run_backtest core
-# ===========================================================================
 
 def test_backtest_returns_result_type():
     r = _run_simple()
@@ -284,8 +271,7 @@ def test_dollar_curve_starts_at_capital():
     assert abs(r.equity_dollars[0] - capital) < 1e-3
 
 def test_capital_final_consistent():
-    # FIX: floating-point accumulation over many trades means we need a
-    # generous tolerance here. 1.0 USD is well within rounding noise.
+    # Floating-point accumulation over many trades, need a generous tolerance here. 1.0 USD is well within rounding noise.
     r = _run_simple(300, "alternating")
     assert abs(r.capital_final - r.equity_dollars[-1]) < 1.0, (
         f"capital_final={r.capital_final} vs equity_dollars[-1]={r.equity_dollars[-1]}"
@@ -366,15 +352,10 @@ def test_metrics_dict_keys():
     assert keys == expected, f"Missing keys: {expected - keys}"
 
 
-# ===========================================================================
 # Group C — exit logic
-# ===========================================================================
 
 def _make_tp_sl_df(direction: int, tp_pct: float = 0.005) -> pd.DataFrame:
-    """
-    Returns a DataFrame where price moves monotonically up (direction=1)
-    or down (direction=-1) by tp_pct, guaranteeing TP is hit.
-    """
+    """Returns a DataFrame where price moves monotonically up or down by tp_pct, guaranteeing TP is hit."""
     n     = 100
     base  = 1.1000
     delta = base * tp_pct * direction
@@ -389,7 +370,7 @@ def _make_tp_sl_df(direction: int, tp_pct: float = 0.005) -> pd.DataFrame:
 def test_tp_hit_long():
     df  = _make_tp_sl_df(direction=1, tp_pct=0.005)
     sig = pd.Series(np.zeros(len(df), dtype=int))
-    sig.iloc[1] = 1   # enter long at bar 1
+    sig.iloc[1] = 1  
     r = run_backtest(
         signals=sig, prices=df["close"],
         pair="EURUSD", strategy="test",
@@ -412,7 +393,7 @@ def test_sl_hit_long():
     """Price drops by > sl_pips on a long trade -> SL triggered."""
     df  = _make_tp_sl_df(direction=-1, tp_pct=0.01)
     sig = pd.Series(np.zeros(len(df), dtype=int))
-    sig.iloc[1] = 1   # enter long but price falls
+    sig.iloc[1] = 1   
     r = run_backtest(
         signals=sig, prices=df["close"],
         pair="EURUSD", strategy="test",
@@ -440,7 +421,7 @@ def test_max_hold_exit():
 def test_signal_flip_exit():
     sig = pd.Series(np.zeros(200, dtype=int))
     sig.iloc[10]  =  1
-    sig.iloc[50]  = -1  # flip -> should close long
+    sig.iloc[50]  = -1  
     df = _make_prices(200)
     r  = run_backtest(
         signals=sig, prices=df["close"],
@@ -452,7 +433,7 @@ def test_signal_flip_exit():
 def test_end_of_data_exit():
     """A trade open at the last bar should be closed with END_OF_DATA."""
     sig = pd.Series(np.zeros(100, dtype=int))
-    sig.iloc[90] = 1   # open near end, no exit signal
+    sig.iloc[90] = 1   
     df  = _make_prices(100)
     r   = run_backtest(
         signals=sig, prices=df["close"],
@@ -489,9 +470,7 @@ def test_sl_pnl_negative_long():
     assert sl_trades[0]["pnl_pct"] < 0, "SL on failing long should be negative"
 
 
-# ===========================================================================
 # Group D — direction modes
-# ===========================================================================
 
 def test_long_only_no_short_trades():
     r = _run_simple(500, "random", direction_mode="long_only")
@@ -519,10 +498,7 @@ def test_short_only_fewer_trades_than_long_short():
     r_so = _run_simple(500, "random", direction_mode="short_only")
     assert r_so.n_trades <= r_ls.n_trades
 
-
-# ===========================================================================
 # Group E — session & entry-time filters
-# ===========================================================================
 
 def test_in_session_london():
     hours = pd.Series([6, 7, 12, 15, 16, 20])
@@ -532,19 +508,18 @@ def test_in_session_london():
 def test_in_session_asia_wraps_midnight():
     hours = pd.Series([22, 23, 0, 3, 7, 8, 12])
     mask  = _in_session(hours, "tokyo")
-    # tokyo: start=23 end=8  -> 23, 0, 3, 7 in; 22, 8, 12 out
     assert list(mask) == [False, True, True, True, True, False, False]
 
 def test_session_filter_reduces_signals():
     """London session filter should allow fewer signal bars than no filter."""
-    df  = _make_prices(1000)  # 1000 bars starting 00:00 UTC
+    df  = _make_prices(1000)  
     sig = _make_signals(1000, "random", seed=10)
     r_all     = run_backtest(signals=sig, prices=df["close"],
                              pair="EURUSD", strategy="test", df_full=df)
     r_london  = run_backtest(signals=sig, prices=df["close"],
                              pair="EURUSD", strategy="test",
                              session="london", df_full=df)
-    # with session filter some bars are zeroed => fewer or equal trades
+    
     assert r_london.n_trades <= r_all.n_trades
 
 def test_entry_time_filter():
@@ -563,9 +538,7 @@ def test_session_ny():
     assert list(mask) == [False, True, True, True, False, False]
 
 
-# ===========================================================================
 # Group F — spread mechanics
-# ===========================================================================
 
 def test_zero_spread_higher_return():
     r_spread = _run_simple(500, "random", spread_pips=2.0)
@@ -598,9 +571,7 @@ def test_default_spread_table_coverage():
         assert p in _DEFAULT_SPREAD, f"{p} missing from spread table"
 
 
-# ===========================================================================
 # Group G — all 13 strategies
-# ===========================================================================
 
 DEFAULT_PRICES = _make_prices(2000, seed=99)
 
@@ -640,7 +611,7 @@ def _strategy_checks(name: str):
             f"{name}: flat%={flat_pct:.1f} — strategy almost never trades"
         )
     else:
-        # Pure crossover / oscillator strategies should be flat >50% of bars
+        # Pure crossover strategies should be flat >50% of bars
         assert flat_pct > 50, (
             f"{name}: flat%={flat_pct:.1f} — likely forwarding positions unexpectedly"
         )
@@ -659,9 +630,7 @@ for _sname in STRATEGY_REGISTRY:
     globals()[f"test_strategy_{_sname}"] = _make_test()
 
 
-# ===========================================================================
 # Group H — strategy constructor validation
-# ===========================================================================
 
 def test_ma_fast_ge_slow_raises():
     try:
@@ -740,10 +709,7 @@ def test_get_strategy_unknown_raises():
     except ValueError:
         pass
 
-
-# ===========================================================================
 # Group I — BacktestResult dataclass
-# ===========================================================================
 
 def test_backtest_result_defaults():
     r = BacktestResult(pair="EURUSD", strategy="test",
@@ -783,18 +749,14 @@ def test_pair_and_strategy_stored():
     assert r.strategy == "test"
 
 
-# ===========================================================================
 # Group J — data loader / split path resolution
-# ===========================================================================
-
 # Import the resolver directly
 from backtest.run_backtest import resolve_split_path, load_split_data, NAMED_SPLITS
 
 
 def test_full_split_path():
     p = resolve_split_path("full", "EURUSD")
-    # FIX: use Path comparison instead of str endswith('/') to work on
-    # Windows (backslash) and POSIX (forward slash) paths alike.
+    # FIX: use Path comparison instead of str endswith('/') to work on Windows (backslash) and POSIX (forward slash) paths alike.
     p = Path(p)
     assert p.name == "EURUSD.parquet", (
         f"Expected filename EURUSD.parquet, got: {p.name}"
@@ -840,7 +802,7 @@ def test_load_data_date_filter_empty_gives_error():
         # If file exists but date range empty we expect ValueError
         assert False, "Should have raised"
     except (FileNotFoundError, ValueError):
-        pass  # both are correct
+        pass  
 
 def test_resolve_unknown_split_raises():
     try:
@@ -850,9 +812,7 @@ def test_resolve_unknown_split_raises():
         pass
 
 
-# ===========================================================================
 # Group K — edge cases for run_backtest
-# ===========================================================================
 
 def test_single_bar_input():
     """run_backtest must not crash on a single bar."""
@@ -940,10 +900,7 @@ def test_resample_df_ohlcv_agg():
     assert df_r["high"].iloc[0] >= df_r["close"].iloc[0]
     assert df_r["low"].iloc[0]  <= df_r["close"].iloc[0]
 
-
-# ===========================================================================
 # Group L — walk-forward fold slicing (no disk I/O, pure logic)
-# ===========================================================================
 
 def test_fold_slicing_correct_size():
     """Verify fold slicing logic matches what run_wf_folds would produce."""
@@ -998,10 +955,7 @@ def test_independent_fold_results():
                            df_full=fold_df)
         assert isinstance(r, BacktestResult)
 
-
-# ===========================================================================
 # Report writer
-# ===========================================================================
 
 SEP  = "-" * 90
 SEP2 = "=" * 90
@@ -1039,7 +993,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
     lines.append(SEP2)
     lines.append("")
 
-    # --- group breakdown ---
+    # group breakdown
     by_group: dict[str, list[TestResult]] = {g: [] for g in GROUP_ORDER}
     # also catch any unlabelled groups
     for r in runner.results:
@@ -1065,7 +1019,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
                     lines.append(f"           {dl}")
         lines.append("")
 
-    # --- failures summary ---
+    # failures summary
     failures = [r for r in runner.results if not r.passed]
     if failures:
         lines.append(SEP2)
@@ -1080,16 +1034,10 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
 
     return "\n".join(lines)
 
-
-# ===========================================================================
 # Main runner
-# ===========================================================================
 
 def collect_tests() -> list[tuple[str, str, Callable]]:
-    """
-    Collect all test_* functions from this module and assign them a group
-    based on the GROUP_ORDER mapping.
-    """
+    """Collect all test functions from this module and assign them a group based on the GROUP_ORDER mapping."""
     group_map = {
         "sharpe": "A", "sortino": "A", "max_drawdown": "A", "rolling_sharpe": "A",
         "equity": "B", "dollar": "B", "capital": "B", "no_trades": "B",
