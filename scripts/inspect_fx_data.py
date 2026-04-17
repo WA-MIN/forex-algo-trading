@@ -33,9 +33,6 @@ def inspect_pair(path: Path) -> None:
 
     print(f"Rows: {len(df)}")
 
-
-    # Column validation
-
     print("\nColumns present:")
     print(list(df.columns))
 
@@ -43,19 +40,12 @@ def inspect_pair(path: Path) -> None:
     if missing_cols:
         print("\nMissing expected columns:", missing_cols)
 
-
-    # Null inspection
-
     print("\nNull values per column:")
     print(df.isnull().sum())
-
-    # Duplicate timestamps
 
     if "timestamp_utc" in df.columns:
         duplicates = df["timestamp_utc"].duplicated().sum()
         print("\nDuplicate timestamps:", duplicates)
-
-    # OHLC validation
 
     if {"open", "high", "low", "close"}.issubset(df.columns):
         invalid_ohlc = (
@@ -67,12 +57,8 @@ def inspect_pair(path: Path) -> None:
         )
         print("\nInvalid OHLC rows:", int(invalid_ohlc.sum()))
 
-    # Zero volume
-
     if "volume" in df.columns:
         print("Zero volume rows:", int((df["volume"] == 0).sum()))
-
-    # Daily coverage
 
     if "timestamp_utc" in df.columns:
         ts = pd.to_datetime(df["timestamp_utc"], utc=True, errors="coerce")
