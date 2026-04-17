@@ -39,10 +39,7 @@ HEADERS = {
 
 
 def get_session(timestamp_utc: pd.Timestamp) -> str:
-    """
-    Label rows by broad trading session using UTC time.
-    Adjust boundaries if your project uses different session definitions.
-    """
+    """Label rows by broad trading session using UTC time."""
     hour = timestamp_utc.hour
 
     if 0 <= hour < 7:
@@ -112,7 +109,7 @@ def download_zip_bytes(session: requests.Session, pair: str, year: int) -> bytes
 
 
 def extract_year_file(zip_bytes: bytes, pair: str, year: int) -> Path:
-    """Extract the CSV or TXT file from the ZIP and save it as a yearly CSV. ZIP is not saved."""
+    """Extract the CSV file from the ZIP and save it as a yearly CSV."""
     pair_dir = EXTRACTED_DIR / pair
     pair_dir.mkdir(parents=True, exist_ok=True)
 
@@ -138,7 +135,7 @@ def extract_year_file(zip_bytes: bytes, pair: str, year: int) -> Path:
 
 
 def download_and_extract_year(session: requests.Session, pair: str, year: int) -> Path:
-    """Download one yearly file and save only the extracted CSV."""
+    """Download yearly file and save the extracted CSV."""
     output_path = EXTRACTED_DIR / pair / f"{pair}_{year}.csv"
 
     if output_path.exists():
@@ -155,12 +152,7 @@ def download_and_extract_year(session: requests.Session, pair: str, year: int) -
 
 
 def load_histdata_file(file_path: Path, pair: str) -> pd.DataFrame:
-    """
-    Load one extracted HistData yearly file.
-
-    HistData ASCII format:
-    YYYYMMDD HHMMSS;open;high;low;close;volume
-    """
+    """Load one extracted HistData yearly file."""
     df = pd.read_csv(
         file_path,
         sep=";",
@@ -185,7 +177,6 @@ def load_histdata_file(file_path: Path, pair: str) -> pd.DataFrame:
     df = df.dropna(subset=["timestamp_est"]).copy()
 
     # HistData timestamps are EST without DST.
-    # UTC = EST + 5 hours.
     df["timestamp_utc"] = (df["timestamp_est"] + pd.Timedelta(hours=5)).dt.tz_localize("UTC")
 
     df["pair"] = pair
