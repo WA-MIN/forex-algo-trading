@@ -62,7 +62,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_pair_parquet(pair: str) -> pd.DataFrame:
-    """Load and validate one canonical pair parquet."""
+    # Load and validate one canonical pair parquet.
     path = PARQUET_DIR / f"{pair}_2015_2025.parquet"
     if not path.exists():
         raise FileNotFoundError(f"Missing canonical parquet: {path}")
@@ -81,7 +81,7 @@ def load_pair_parquet(pair: str) -> pd.DataFrame:
 
 
 def invalid_ohlc_mask(df: pd.DataFrame) -> pd.Series:
-    """Return a boolean mask for structurally invalid OHLC rows."""
+    # Return boolean mask for invalid OHLC rows.
     return (
         (df["high"] < df["low"]) |
         (df["open"] > df["high"]) |
@@ -111,7 +111,6 @@ def build_cleaning_summary(
     dropped_days_df: pd.DataFrame,
     min_obs_day: int,
 ) -> pd.DataFrame:
-    """Build a one-row audit record of what was removed and why."""
     before_rows = len(before_df)
     after_rows = len(after_df)
 
@@ -145,17 +144,7 @@ def build_cleaning_summary(
 
 
 def clean_pair(df: pd.DataFrame, min_obs_day: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Apply structural cleaning rules in order. Returns cleaned data and dropped-days log.
-
-    Steps applied:
-    1. Sort by timestamp_utc so duplicate-keep logic is deterministic.
-    2. Drop rows missing any OHLC price or the UTC timestamp itself.
-    3. Drop duplicate timestamps, keeping the first (earliest after sort).
-    4. Drop rows that violate OHLC relationships (e.g. high < low).
-    5. Drop entire days with fewer than min_obs_day observations.
-       Coverage is computed on already-cleaned rows, not raw rows.
-    """
+    """Apply structural cleaning rules in order."""
     out = df.copy()
 
     # 1. sort
