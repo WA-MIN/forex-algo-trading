@@ -100,12 +100,12 @@ def load_feature_pair(pair: str) -> pd.DataFrame:
 
 
 def compute_future_return(df: pd.DataFrame, horizon: int) -> pd.Series:
-    # shift(-horizon) aligns the future close to the current row
+    # shift aligns the future close to the current row
     return df["close"].shift(-horizon) / df["close"] - 1.0
 
 
 def make_3class_label(future_ret: pd.Series, threshold: float) -> pd.Series:
-    """Map forward returns to -1 (short), 0 (flat), 1 (long). NaN tail rows stay NA."""
+    """Map forward returns to -1 (short), 0 (flat), 1 (long)."""
     label = pd.Series(0, index=future_ret.index, dtype="int8")
     label = label.mask(future_ret > threshold, 1)
     label = label.mask(future_ret < -threshold, -1)
@@ -230,7 +230,7 @@ def process_pair(
     )
 
     if not keep_tail:
-        # drop tail rows where forward close is unavailable (NaN labels)
+        # drop tail rows where forward close is unavailable
         primary_col = f"label_3class_{horizon_primary}"
         secondary_col = f"label_3class_{horizon_secondary}"
         labeled_df = labeled_df.dropna(subset=[primary_col, secondary_col]).reset_index(drop=True)
