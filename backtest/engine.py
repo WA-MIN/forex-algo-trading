@@ -17,7 +17,7 @@ PAIRS: list[str] = [
 # pip size per pair (JPY pairs: 0.01, everything else: 0.0001)
 _PIP: dict[str, float] = {p: (0.01 if "JPY" in p else 0.0001) for p in PAIRS}
 
-# default spread in pips per pair
+# default spread in pips
 _DEFAULT_SPREAD: dict[str, float] = {
     "EURUSD": 0.6, "GBPUSD": 0.8, "USDJPY": 0.7, "USDCHF": 1.0,
     "AUDUSD": 0.8, "USDCAD": 1.0, "NZDUSD": 1.2, "EURGBP": 1.0,
@@ -25,7 +25,7 @@ _DEFAULT_SPREAD: dict[str, float] = {
 
 _DATASETS = Path(__file__).resolve().parent.parent / "datasets"
 
-# session hour ranges (UTC, inclusive start, exclusive end)
+# trading session (UTC)
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
     "london": (7,  16),
     "ny":     (13, 22),
@@ -46,11 +46,10 @@ class BacktestResult:
     pair:           str
     strategy:       str
     split:          str
-    mode:           str            # "research" | "simulation"
-    direction_mode: str            # "long_short" | "long_only" | "short_only"
-    fold_index:     int            # 0 = single run; 1-N = WF fold number
+    mode:           str           
+    direction_mode: str          
+    fold_index:     int          
 
-    # time-series
     equity:         List[float] = field(default_factory=list)
     equity_dollars: List[float] = field(default_factory=list)
     rolling_sharpe: List[float] = field(default_factory=list)
@@ -58,7 +57,6 @@ class BacktestResult:
 
     signal_dist:    dict        = field(default_factory=dict)
 
-    # scalar metrics
     net_sharpe:     float = 0.0
     gross_sharpe:   float = 0.0
     total_return:   float = 0.0
@@ -95,11 +93,7 @@ class BacktestResult:
 
 
 def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """
-    Annualised Sharpe from a bar-level return array.
-    Pass the full array including zero bars -- using only non-zero bars
-    shrinks std artificially and inflates the result.
-    """
+    """Annualised Sharpe from a full return array."""
     if len(returns) < 2:
         return 0.0
     std = returns.std()
@@ -109,10 +103,7 @@ def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
 
 
 def _sortino(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """
-    Annualised Sortino from a bar-level return array.
-    Same note as _sharpe: pass the full array.
-    """
+    """Annualised Sortino from a full return array."""
     downside = returns[returns < 0]
     if len(downside) < 2:
         return 0.0
@@ -132,7 +123,7 @@ def _max_drawdown(equity: np.ndarray) -> float:
 
 def _rolling_sharpe(
     returns: np.ndarray,
-    window: int = 390,          # 1 trading day at 1-min resolution
+    window: int = 390,         
 ) -> list[float]:
     out = []
     for i in range(len(returns)):
@@ -177,30 +168,7 @@ def run_backtest(
     fold_index:     int          = 0,
     df_full:        Optional[pd.DataFrame] = None,
 ) -> BacktestResult:
-    """
-    Run a single backtest and return a BacktestResult.
-
-    Parameters
-    ----------
-    signals        : integer Series of crossover events (1, -1, 0)
-    prices         : close price Series aligned to signals
-    pair           : currency pair string e.g. "EURUSD"
-    strategy       : strategy name string
-    split          : "train" | "val" | "test"
-    spread_pips    : override spread in pips (uses table default if None)
-    tp_pips        : take-profit distance in pips (None = no TP)
-    sl_pips        : stop-loss distance in pips (None = no SL)
-    capital_initial: starting capital in USD
-    max_hold_bars  : max bars to hold before forced exit (None = no limit)
-    timestamps     : list of ISO timestamp strings aligned to prices
-    session        : session filter ("london"|"ny"|"tokyo"|"sydney")
-    entry_time     : "HH:MM" UTC -- only enter at or after this time each day
-    resample       : pandas offset string to resample before running
-    direction_mode : "long_short" | "long_only" | "short_only"
-    mode           : "research" | "simulation"
-    fold_index     : walk-forward fold number (0 = single run)
-    df_full        : full OHLCV DataFrame (needed for session/entry filtering)
-    """
+    """Run a single backtest and return a BacktestResult."""
 
     pip   = _PIP.get(pair, 0.0001)
     spread = (spread_pips if spread_pips is not None
@@ -224,7 +192,6 @@ def run_backtest(
             mask &= (ts.dt.hour > hh) | ((ts.dt.hour == hh) & (ts.dt.minute >= mm))
         signals = signals.where(mask.values, 0)
 
-    # forward-fill crossover events into held positions, then shift by 1
     pos = signals.replace(0, np.nan).ffill().fillna(0).astype(int)
     pos = pos.shift(1).fillna(0).astype(int)
 
@@ -244,7 +211,6 @@ def run_backtest(
     open_trade  = None
     capital     = capital_initial
 
-    # guard against capital_initial=0 to avoid ZeroDivisionError
     _equity_base = capital_initial if capital_initial != 0.0 else 1.0
 
     for i in range(1, n):
@@ -294,7 +260,6 @@ def run_backtest(
                 })
                 open_trade = None
             else:
-                # mark-to-market on open trade
                 raw_ret = d * (price - prev_p) / prev_p
                 bar_returns[i] = raw_ret
                 equity_curve[i] = capital / _equity_base
@@ -311,7 +276,6 @@ def run_backtest(
                 "direction":   cur_pos,
             }
 
-    # close any remaining open trade at last bar
     if open_trade is not None:
         i   = n - 1
         d   = open_trade["direction"]
@@ -340,11 +304,11 @@ def run_backtest(
     total_return = float(eq[-1] - 1.0)
     mdd          = _max_drawdown(eq)
 
-    # use full ret_arr (all bars) -- non-zero-only shrinks std and inflates Sharpe
+    
     net_sh    = _sharpe(ret_arr)
     sortino_v = _sortino(ret_arr)
 
-    # gross_sharpe uses only positive-return bars (measures raw upside)
+    
     gross_sh  = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
 
     calmar_v  = (total_return / abs(mdd)) if mdd < 0 else 0.0
@@ -418,13 +382,7 @@ def run_wf_folds(
     direction_mode: str          = "long_short",
     mode:           str          = "research",
 ) -> list[BacktestResult]:
-    """
-    Walk-forward cross-validation over the train split.
-
-    Loads datasets/train/{pair}_train.parquet, divides it into n_folds
-    equal windows, and runs a backtest on each. Returns one BacktestResult
-    per fold.
-    """
+    """Walk-forward cross-validation over the train split."""
     path = _DATASETS / "train" / f"{pair}_train.parquet"
     if not path.exists():
         raise FileNotFoundError(
