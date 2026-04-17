@@ -101,7 +101,6 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def add_return_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    # log return: ln(P_t) - ln(P_{t-1}), standard in FX literature
     out["log_ret_1"] = np.log(out["close"]).diff()
 
     for window in RET_WINDOWS:
@@ -153,7 +152,7 @@ def add_volatility_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     vol_col = f"rv_{VOL_REGIME_WINDOW}"
     threshold_col = f"{vol_col}_q{int(VOL_REGIME_QUANTILE * 100)}"
 
-    # expanding quantile avoids look-ahead: threshold uses only past observations
+    # expanding quantile avoids look-ahead
     out[threshold_col] = (
         out[vol_col]
         .expanding(min_periods=VOL_REGIME_WINDOW)
@@ -232,7 +231,7 @@ def build_pair_features(
     before_drop = len(out)
 
     if drop_warmup:
-        # drop rows where any rolling feature is still in its warmup window (NaN)
+        # drop rows where any rolling feature is still in its warmup window
         required_feature_cols = [
             "ret_1", "ret_5", "ret_15",
             "rv_10", "rv_30", "rv_60",
