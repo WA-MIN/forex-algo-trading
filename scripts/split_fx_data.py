@@ -27,30 +27,12 @@ REQUIRED_COLUMNS = [
     "label",
 ]
 
-#  Fixed split boundaries
-# Train : 2015-01-02 → 2021-12-31   (66.3 % of data — confirmed by EDA)
-# Val   : 2022-01-01 → 2023-12-31   (14.8 % of data — confirmed by EDA)
-# Test  : 2024-01-01 → 2025-12-31   (18.9 % of data — confirmed by EDA)
-# Purge : 15 rows dropped from the tail of each train slice before the next,
-#         slice begins.  Matches horizon_secondary = 15 in labels_fx_data.py,
-#         so no forward-return label at a boundary can see into the next split.
-
-# Walk-forward folds (expanding window, inside train+val window only)
-# Fold 0 : train 2015–2018  |  purge  |  val 2019
-# Fold 1 : train 2015–2019  |  purge  |  val 2020
-# Fold 2 : train 2015–2020  |  purge  |  val 2021
-# Fold 3 : train 2015–2021  |  purge  |  val 2022
-# Fold 4 : train 2015–2022  |  purge  |  val 2023
-# Test set (2024–2025) is NEVER involved in fold construction.
-
 DEFAULT_TRAIN_END   = "2021-12-31 23:59:59+00:00"
 DEFAULT_VAL_END     = "2023-12-31 23:59:59+00:00"
 DEFAULT_PURGE_ROWS  = 15
 DEFAULT_N_FOLDS     = 5
 FOLD_FIRST_VAL_YEAR = 2019
 
-
-#  Helpers
 
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
@@ -76,8 +58,6 @@ def ts_year_end(year: int) -> pd.Timestamp:
 def ts_year_start(year: int) -> pd.Timestamp:
     return parse_timestamp(f"{year}-01-01 00:00:00+00:00")
 
-
-# CLI
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -106,7 +86,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-# Data loading
 
 def load_labeled_pair(pair: str) -> pd.DataFrame:
     """Load and validate one labeled pair parquet."""
@@ -127,10 +106,8 @@ def load_labeled_pair(pair: str) -> pd.DataFrame:
     return df
 
 
-#  Splitting primitives
-
 def apply_purge(df: pd.DataFrame, purge_rows: int) -> pd.DataFrame:
-    """Drop the last `purge_rows` rows from a DataFrame slice."""
+    """Drop the last `purge_rows` from a DataFrame slice."""
     if len(df) <= purge_rows:
         return df.copy()
     return df.iloc[: len(df) - purge_rows].copy()
@@ -141,17 +118,13 @@ def slice_window(
     start: pd.Timestamp | None,
     end: pd.Timestamp,
 ) -> pd.DataFrame:
-    """
-    Return rows where timestamp_utc is within (start, end].
-    If start is None, returns all rows up to end (from the beginning).
-    """
+    """Return rows where timestamp_utc is within."""
     mask = df["timestamp_utc"] <= end
     if start is not None:
         mask &= df["timestamp_utc"] > start
     return df.loc[mask].copy()
 
 
-#  Statistics helpers
 
 def label_distribution(df: pd.DataFrame, prefix: str) -> dict:
     """Compute label counts and class percentages for one split."""
@@ -190,8 +163,6 @@ def session_distribution(df: pd.DataFrame, prefix: str) -> dict:
     }
 
 
-#  Fixed split
-
 def _fixed_outputs_exist(pair: str) -> bool:
     return (
         (TRAIN_DIR   / f"{pair}_train.parquet").exists()
@@ -209,15 +180,7 @@ def process_fixed_split(
     purge_rows: int,
     force: bool,
 ) -> pd.DataFrame:
-    """
-    Produce the fixed train / val / test parquets for one pair.
-
-    Timeline:
-      [── train ──][purge][── val ──][purge][── test ──]
-
-    Returns the one-row summary DataFrame.
-    Skips writing if all four outputs exist and force=False.
-    """
+    """Produce the fixed train / val / test parquets for one pair."""
     summary_path = REPORTS_DIR / f"{pair}_split_summary.csv"
 
     if _fixed_outputs_exist(pair) and not force:
@@ -270,23 +233,8 @@ def process_fixed_split(
     return summary_df
 
 
-#  Walk-forward folds
-
 def _fold_boundaries(n_folds: int, first_val_year: int) -> list[dict]:
-    """
-    Build boundary dicts for each fold.
-
-    Fold k:
-      train window : beginning of data  →  end of (first_val_year + k - 1)
-      val window   : start of (first_val_year + k)  →  end of (first_val_year + k)
-
-    Example with first_val_year=2019, n_folds=5:
-      Fold 0: train ≤ 2018-12-31,  val 2019-01-01 → 2019-12-31
-      Fold 1: train ≤ 2019-12-31,  val 2020-01-01 → 2020-12-31
-      Fold 2: train ≤ 2020-12-31,  val 2021-01-01 → 2021-12-31
-      Fold 3: train ≤ 2021-12-31,  val 2022-01-01 → 2022-12-31
-      Fold 4: train ≤ 2022-12-31,  val 2023-01-01 → 2023-12-31
-    """
+    """Build boundary dicts for each fold."""
     folds = []
     for k in range(n_folds):
         val_year   = first_val_year + k
@@ -315,16 +263,7 @@ def process_folds(
     purge_rows: int,
     force: bool,
 ) -> list[dict]:
-    """
-    Produce walk-forward fold parquets for one pair.
-
-    For each fold k:
-      - train  = all rows from start of data up to train_end, minus purge tail
-      - val    = rows within [val_start, val_end]
-      - test set is NEVER touched
-
-    Returns a list of one summary dict per fold.
-    """
+    """Produce walk-forward fold parquets for one pair."""
     boundaries   = _fold_boundaries(n_folds, FOLD_FIRST_VAL_YEAR)
     fold_summaries = []
 
@@ -394,9 +333,6 @@ def process_folds(
         )
 
     return fold_summaries
-
-
-#  Main
 
 def main() -> None:
     args = parse_args()
