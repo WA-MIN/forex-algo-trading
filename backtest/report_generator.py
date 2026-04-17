@@ -16,10 +16,7 @@ DEFAULT_OUT   = Path(__file__).resolve().parent / "reports"
 
 
 class _NumpyEncoder(json.JSONEncoder):
-    """
-    Converts numpy scalars and arrays to plain Python types.
-    Handles int64, float32, ndarray, float('inf'), and NaN.
-    """
+    """Converts numpy scalars and arrays to plain Python types."""
 
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -41,7 +38,7 @@ class _NumpyEncoder(json.JSONEncoder):
 
 
 def _sanitise(obj):
-    """Recursively replace nan/inf floats with None."""
+    """Replace nan/inf floats with None."""
     if isinstance(obj, float):
         return None if (math.isnan(obj) or math.isinf(obj)) else obj
     if isinstance(obj, dict):
@@ -108,20 +105,7 @@ def generate_report(
     title:        str            = "FXAlgo Report",
     open_browser: bool           = True,
 ) -> Path:
-    """
-    Renders all BacktestResults into a self-contained HTML report.
-
-    Parameters
-    ----------
-    results      : list of BacktestResult from run_backtest or run_wf_folds
-    out_path     : destination .html file (auto-named if omitted)
-    title        : report title shown in the topbar
-    open_browser : open the file in the default browser after writing
-
-    Returns
-    -------
-    Path of the written report file.
-    """
+    """Renders all BacktestResults into a self-contained HTML report."""
     if not results:
         raise ValueError("results list is empty -- nothing to report.")
 
