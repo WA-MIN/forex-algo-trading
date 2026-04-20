@@ -7,6 +7,24 @@ Research pipeline comparing rule-based strategies on 1-minute FX data. The selec
 Seven currency pairs (plus EURGBP), 2015 to 2025, 1-minute bars sourced from HistData.com. The pipeline runs from raw download through feature engineering, label construction, walk-forward cross-validation, and cost-aware backtesting. Every strategy is evaluated by the same engine with the same metric definitions.
 
 The question: under realistic spreads and strict time-series cross-validation, which strategy produces the best risk-adjusted net performance at the 1-minute level?
+## Quick Start (Windows + PyCharm)
+### 1. Clone the repository
+```bash
+git clone https://github.com/Kanyal-HarsH/forex-algo-trading.git
+cd forex-algo-trading
+```
+### 2. Create virtual environment
+```bash
+python -m venv venv
+```
+### 3. Install dependencies
+```bash
+pip install -r requirements.txt
+```
+If ```requirements.txt``` is missing:
+```bash
+pip install pandas numpy pyarrow scikit-learn matplotlib seaborn pyyaml
+```
 
 ## Repository structure
 
@@ -63,12 +81,45 @@ forex-algo-trading/
 `-- README.md
 ```
 
+## Configuration
+### Option 1: CLI arguments (default)
+All parameters can be passed via CLI.
+### Option 2: YAML Config (recommended for reproducibility)
+Create `configs/default.yaml`:
+```yaml
+pairs: ["EURUSD", "GBPUSD"]
+strategies: ["MACrossover_f20_s50_EMA"]
+split: "val"
+folds: 5
+spread: 1.2
+tp_pips: 10
+sl_pips: 5
+capital: 10000
+```
+
+Run using:
+
+```bash
+python -m cli.run --config configs/default.yaml
+```
+### Option 3: Environment Variables (```.env```)
+```bash
+DATA_DIR=./data
+DEFAULT_CAPITAL=10000
+DEFAULT_SPREAD=1.0
+```
+Used inside `config.py`.
+
 ## Data
 
-**Source:** HistData.com 1-minute ASCII OHLC bars
-**Pairs:** EURUSD, GBPUSD, USDJPY, USDCHF, USDCAD, AUDUSD, NZDUSD, EURGBP
-**Coverage:** 2015-01-01 to 2025-12-31
+**Source:** HistData.com 1-minute ASCII OHLC bars. 
+
+**Pairs:** EURUSD, GBPUSD, USDJPY, USDCHF, USDCAD, AUDUSD, NZDUSD, EURGBP. 
+
+**Coverage:** 2015-01-01 to 2025-12-31.
+
 **Price type:** Indicative mid-prices. No bid/ask, no order book.
+
 **Volume:** Synthetic tick count.
 
 | Column          | Type           | Description                        |
