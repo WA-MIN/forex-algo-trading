@@ -7,7 +7,7 @@ Research pipeline comparing rule-based strategies on 1-minute FX data. The selec
 Seven currency pairs (plus EURGBP), 2015 to 2025, 1-minute bars sourced from HistData.com. The pipeline runs from raw download through feature engineering, label construction, walk-forward cross-validation, and cost-aware backtesting. Every strategy is evaluated by the same engine with the same metric definitions.
 
 The question: under realistic spreads and strict time-series cross-validation, which strategy produces the best risk-adjusted net performance at the 1-minute level?
-## Quick Start (Windows + PyCharm)
+## Quick Start
 ### 1. Clone the repository
 ```bash
 git clone https://github.com/Kanyal-HarsH/forex-algo-trading.git
@@ -82,9 +82,9 @@ forex-algo-trading/
 ```
 
 ## Configuration
-### Option 1: CLI arguments (default)
+### Option 1: CLI arguments 
 All parameters can be passed via CLI.
-### Option 2: YAML Config (recommended for reproducibility)
+### Option 2: YAML Config 
 Create `configs/default.yaml`:
 ```yaml
 pairs: ["EURUSD", "GBPUSD"]
@@ -231,7 +231,7 @@ Signals are generated at bar `t` and executed at bar `t+1`. The engine calls `si
 
 TP and SL are optional (`tp_pips`, `sl_pips`). Default is no TP or SL.
 
-### Metrics
+### Core Metrics
 
 | Metric          | Role              |
 |-----------------|-------------------|
@@ -361,6 +361,19 @@ python -m backtest.run_backtest \
 All arguments are optional. Defaults: all pairs, all strategies, `full` split, no folds, table spreads, no TP/SL.
 
 Do not use `--split test` until all hyperparameter decisions are final.
+
+## CLI Arguments
+
+| Flag            | Description                      |
+|-----------------|----------------------------------|
+| `--pair`        | Currency pairs (space separated) |
+| `--strategy`    | Strategy names from registry     |
+| `--split`       | `train`, `val`, `test` or `full` |
+| `--folds`       | Walk-forward folds               |
+| `--spread`      | Override spread                  |
+| `--tp-pips`     | Take profit                      |
+| `--sl-pips`     | Stop loss                        |
+| `--no-browser`  | Disable auto report opening      |
 
 ## Pipeline execution
 
