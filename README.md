@@ -85,30 +85,11 @@ forex-algo-trading/
 ### Option 1: CLI arguments 
 All parameters can be passed via CLI.
 ### Option 2: YAML Config 
-Create `configs/default.yaml`:
-```yaml
-pairs: ["EURUSD", "GBPUSD"]
-strategies: ["MACrossover_f20_s50_EMA"]
-split: "val"
-folds: 5
-spread: 1.2
-tp_pips: 10
-sl_pips: 5
-capital: 10000
-```
-
 Run using:
 
 ```bash
 python -m cli.run --config configs/default.yaml
 ```
-### Option 3: Environment Variables (```.env```)
-```bash
-DATA_DIR=./data
-DEFAULT_CAPITAL=10000
-DEFAULT_SPREAD=1.0
-```
-Used inside `config.py`.
 
 ## Data
 
