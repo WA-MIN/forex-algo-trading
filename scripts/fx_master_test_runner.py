@@ -30,8 +30,6 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
 
-# Use only the 7 pairs you actually have.
-# If you later add EURGBP parquet files, change this back to list(PAIRS)
 ALL_PAIRS = [p for p in PAIRS if p != "EURGBP"]
 
 ALL_SESSIONS = [None, "london", "ny", "asia", "overlap"]
@@ -47,22 +45,6 @@ DEFAULT_SPREADS = {
     "USDCAD": 1.0,
     "NZDUSD": 1.2,
     "EURGBP": 1.0,
-}
-
-WARMUP_BARS = {
-    "MACrossover_f20_s50_EMA": 50,
-    "MACrossover_f10_s30_EMA": 30,
-    "MACrossover_f20_s50_SMA": 50,
-    "Momentum_lb60": 60,
-    "Momentum_lb120": 120,
-    "Donchian_p20": 20,
-    "Donchian_p55": 55,
-    "RSI_p14_os30_ob70": 14,
-    "RSI_p7_os25_ob75": 7,
-    "BB_p20_std2_0": 20,
-    "BB_p14_std1_5": 14,
-    "MACD_f12_s26_sig9": 34,
-    "MACD_f8_s21_sig5": 25,
 }
 
 
@@ -272,7 +254,8 @@ def _single_run(spec: RunSpec) -> RunOutcome:
                 .reset_index(drop=True)
             )
 
-        if len(df) <= WARMUP_BARS.get(spec.strategy, 0):
+        warmup = get_strategy(spec.strategy).warmup_bars
+        if len(df) <= warmup:
             return RunOutcome(
                 ok=False,
                 status="SKIP_WARMUP_GT_DATA",
@@ -286,7 +269,7 @@ def _single_run(spec: RunSpec) -> RunOutcome:
                 sl_pips=spec.sl_pips,
                 folds=spec.folds,
                 warning_flags=warn_flags + ["WARMUP_GT_DATA"],
-                notes=f"rows={len(df)} warmup={WARMUP_BARS.get(spec.strategy, 0)}",
+                notes=f"rows={len(df)} warmup={warmup}",
             )
 
         strat = get_strategy(spec.strategy)
@@ -649,7 +632,7 @@ def write_txt_report(path: Path, config: dict[str, Any], tiers: dict[str, list[R
     lines.append("-" * 120)
     for r in finals:
         cmd = (
-            f"python cli\\run.py --pair {r.pair} --strategy {r.strategy} --split test "
+            f"python backtest/run_backtest.py --pair {r.pair} --strategy {r.strategy} --split test "
             f"--direction {r.direction}"
         )
         if r.session:
