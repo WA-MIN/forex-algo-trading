@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.constants import MIN_BARS_PER_DAY
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 DATA_DIR = PROJECT_DIR / "data"
@@ -30,8 +32,6 @@ CORE_COLUMNS = [
     "session",
 ]
 
-MIN_OBS_PER_DAY = 1200
-
 
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-obs-day",
         type=int,
-        default=MIN_OBS_PER_DAY,
+        default=MIN_BARS_PER_DAY,
         help="Drop all rows from days with fewer than this many observations.",
     )
     parser.add_argument(
@@ -62,7 +62,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_pair_parquet(pair: str) -> pd.DataFrame:
-    # Load and validate one canonical pair parquet.
     path = PARQUET_DIR / f"{pair}_2015_2025.parquet"
     if not path.exists():
         raise FileNotFoundError(f"Missing canonical parquet: {path}")
@@ -81,7 +80,6 @@ def load_pair_parquet(pair: str) -> pd.DataFrame:
 
 
 def invalid_ohlc_mask(df: pd.DataFrame) -> pd.Series:
-    # Return boolean mask for invalid OHLC rows.
     return (
         (df["high"] < df["low"]) |
         (df["open"] > df["high"]) |
@@ -147,16 +145,11 @@ def clean_pair(df: pd.DataFrame, min_obs_day: int) -> tuple[pd.DataFrame, pd.Dat
     """Apply structural cleaning rules in order."""
     out = df.copy()
 
-    # 1. sort
     out = out.sort_values("timestamp_utc").reset_index(drop=True)
-    # 2. drop missing prices
     out = out.dropna(subset=["timestamp_utc", "open", "high", "low", "close"]).copy()
-    # 3. drop duplicate timestamps
     out = out.drop_duplicates(subset=["timestamp_utc"], keep="first").copy()
-    # 4. drop invalid OHLC
     out = out.loc[~invalid_ohlc_mask(out)].copy()
 
-    # 5. drop low-coverage days
     daily_counts = compute_daily_counts(out)
     dropped_days_df = daily_counts.loc[daily_counts["observations"] < min_obs_day].copy()
 
