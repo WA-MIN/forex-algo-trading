@@ -1,40 +1,40 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib     import Path
-from typing      import List, Optional
+from pathlib import Path
+from typing import List, Optional
 
-import numpy  as np
+import numpy as np
 import pandas as pd
 
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
 
 PAIRS: list[str] = [
     "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
-    "AUDUSD", "USDCAD", "NZDUSD", "EURGBP",
+    "AUDUSD", "USDCAD", "NZDUSD",
 ]
 
-# pip size per pair (JPY pairs: 0.01, everything else: 0.0001)
 _PIP: dict[str, float] = {p: (0.01 if "JPY" in p else 0.0001) for p in PAIRS}
 
-# default spread in pips
 _DEFAULT_SPREAD: dict[str, float] = {
     "EURUSD": 0.6, "GBPUSD": 0.8, "USDJPY": 0.7, "USDCHF": 1.0,
-    "AUDUSD": 0.8, "USDCAD": 1.0, "NZDUSD": 1.2, "EURGBP": 1.0,
+    "AUDUSD": 0.8, "USDCAD": 1.0, "NZDUSD": 1.2,
 }
 
 _DATASETS = Path(__file__).resolve().parent.parent / "datasets"
 
-# trading session (UTC)
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
-    "london": (7,  16),
-    "ny":     (13, 22),
-    "tokyo":  (23,  8),   # wraps midnight
-    "sydney": (21,  6),   # wraps midnight
+    "london":  (7,  16),
+    "ny":      (13, 22),
+    "asia":    (23,  8),
+    "overlap": (13, 16),
 }
 
 
 def _in_session(hour: pd.Series, session: str) -> pd.Series:
+    if session not in _SESSION_HOURS:
+        valid = list(_SESSION_HOURS.keys())
+        raise ValueError(f"Unknown session '{session}'. Valid options: {valid}")
     start, end = _SESSION_HOURS[session]
     if start < end:
         return (hour >= start) & (hour < end)
@@ -46,9 +46,9 @@ class BacktestResult:
     pair:           str
     strategy:       str
     split:          str
-    mode:           str           
-    direction_mode: str          
-    fold_index:     int          
+    mode:           str
+    direction_mode: str
+    fold_index:     int
 
     equity:         List[float] = field(default_factory=list)
     equity_dollars: List[float] = field(default_factory=list)
@@ -57,17 +57,17 @@ class BacktestResult:
 
     signal_dist:    dict        = field(default_factory=dict)
 
-    net_sharpe:     float = 0.0
-    gross_sharpe:   float = 0.0
-    total_return:   float = 0.0
-    max_drawdown:   float = 0.0
-    calmar:         float = 0.0
-    win_rate:       float = 0.0
-    profit_factor:  float = 0.0
-    avg_trade_bars: float = 0.0
-    turnover:       float = 0.0
-    sortino:        float = 0.0
-    n_trades:       int   = 0
+    net_sharpe:      float = 0.0
+    gross_sharpe:    float = 0.0
+    total_return:    float = 0.0
+    max_drawdown:    float = 0.0
+    calmar:          float = 0.0
+    win_rate:        float = 0.0
+    profit_factor:   float = 0.0
+    avg_trade_bars:  float = 0.0
+    turnover:        float = 0.0
+    sortino:         float = 0.0
+    n_trades:        int   = 0
     capital_initial: float = 10_000.0
     capital_final:   float = 0.0
 
@@ -93,7 +93,6 @@ class BacktestResult:
 
 
 def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """Annualised Sharpe from a full return array."""
     if len(returns) < 2:
         return 0.0
     std = returns.std()
@@ -103,7 +102,6 @@ def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
 
 
 def _sortino(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
-    """Annualised Sortino from a full return array."""
     downside = returns[returns < 0]
     if len(downside) < 2:
         return 0.0
@@ -117,14 +115,11 @@ def _max_drawdown(equity: np.ndarray) -> float:
     if len(equity) == 0:
         return 0.0
     peak = np.maximum.accumulate(equity)
-    dd   = (equity - peak) / peak
+    dd = (equity - peak) / peak
     return float(dd.min())
 
 
-def _rolling_sharpe(
-    returns: np.ndarray,
-    window: int = 390,         
-) -> list[float]:
+def _rolling_sharpe(returns: np.ndarray, window: int = 390) -> list[float]:
     out = []
     for i in range(len(returns)):
         w = returns[max(0, i - window + 1): i + 1]
@@ -149,32 +144,30 @@ def _resample_df(df: pd.DataFrame, freq: str) -> pd.DataFrame:
 
 
 def run_backtest(
-    signals:        pd.Series,
-    prices:         pd.Series,
-    pair:           str,
-    strategy:       str,
-    split:          str          = "val",
-    spread_pips:    Optional[float] = None,
-    tp_pips:        Optional[float] = None,
-    sl_pips:        Optional[float] = None,
-    capital_initial: float       = 10_000.0,
-    max_hold_bars:  Optional[int]   = None,
-    timestamps:     Optional[list]  = None,
-    session:        Optional[str]   = None,
-    entry_time:     Optional[str]   = None,
-    resample:       Optional[str]   = None,
-    direction_mode: str          = "long_short",
-    mode:           str          = "research",
-    fold_index:     int          = 0,
-    df_full:        Optional[pd.DataFrame] = None,
+    signals:         pd.Series,
+    prices:          pd.Series,
+    pair:            str,
+    strategy:        str,
+    split:           str              = "val",
+    spread_pips:     Optional[float]  = None,
+    tp_pips:         Optional[float]  = None,
+    sl_pips:         Optional[float]  = None,
+    capital_initial: float            = 10_000.0,
+    max_hold_bars:   Optional[int]    = None,
+    timestamps:      Optional[list]   = None,
+    session:         Optional[str]    = None,
+    entry_time:      Optional[str]    = None,
+    resample:        Optional[str]    = None,
+    direction_mode:  str              = "long_short",
+    mode:            str              = "research",
+    fold_index:      int              = 0,
+    df_full:         Optional[pd.DataFrame] = None,
 ) -> BacktestResult:
-    """Run a single backtest and return a BacktestResult."""
-
-    pip   = _PIP.get(pair, 0.0001)
+    pip = _PIP.get(pair, 0.0001)
     spread = (spread_pips if spread_pips is not None
               else _DEFAULT_SPREAD.get(pair, 1.0)) * pip
 
-    prices  = prices.reset_index(drop=True)
+    prices = prices.reset_index(drop=True)
     signals = signals.reset_index(drop=True)
 
     if direction_mode == "long_only":
@@ -203,13 +196,13 @@ def run_backtest(
     tp_dist = tp_pips * pip if tp_pips is not None else None
     sl_dist = sl_pips * pip if sl_pips is not None else None
 
-    equity_curve  = np.ones(n)
-    dollar_curve  = np.full(n, capital_initial)
-    bar_returns   = np.zeros(n)
+    equity_curve = np.ones(n)
+    dollar_curve = np.full(n, capital_initial)
+    bar_returns  = np.zeros(n)
 
-    trade_log   = []
-    open_trade  = None
-    capital     = capital_initial
+    trade_log  = []
+    open_trade = None
+    capital    = capital_initial
 
     _equity_base = capital_initial if capital_initial != 0.0 else 1.0
 
@@ -219,9 +212,9 @@ def run_backtest(
         prev_p  = price_arr[i - 1]
 
         if open_trade is not None:
-            d          = open_trade["direction"]
-            ep         = open_trade["entry_price"]
-            bars_held  = i - open_trade["entry_bar"]
+            d           = open_trade["direction"]
+            ep          = open_trade["entry_price"]
+            bars_held   = i - open_trade["entry_bar"]
             exit_reason = None
 
             if tp_dist and d == 1  and price >= ep + tp_dist:
@@ -238,14 +231,14 @@ def run_backtest(
                 exit_reason = "SIGNAL_FLIP"
 
             if exit_reason:
-                raw_ret = d * (price - ep) / ep
-                net_ret = raw_ret - spread / ep
+                raw_ret     = d * (price - ep) / ep
+                net_ret     = raw_ret - spread / ep
                 pnl_dollars = net_ret * capital
 
                 capital += pnl_dollars
-                bar_returns[i] = net_ret
-                equity_curve[i] = capital / _equity_base
-                dollar_curve[i] = capital
+                bar_returns[i]   = net_ret
+                equity_curve[i]  = capital / _equity_base
+                dollar_curve[i]  = capital
 
                 trade_log.append({
                     "entry_bar":   open_trade["entry_bar"],
@@ -260,10 +253,10 @@ def run_backtest(
                 })
                 open_trade = None
             else:
-                raw_ret = d * (price - prev_p) / prev_p
-                bar_returns[i] = raw_ret
-                equity_curve[i] = capital / _equity_base
-                dollar_curve[i] = capital
+                raw_ret          = d * (price - prev_p) / prev_p
+                bar_returns[i]   = raw_ret
+                equity_curve[i]  = capital / _equity_base
+                dollar_curve[i]  = capital
 
         else:
             equity_curve[i] = equity_curve[i - 1]
@@ -277,15 +270,15 @@ def run_backtest(
             }
 
     if open_trade is not None:
-        i   = n - 1
-        d   = open_trade["direction"]
-        ep  = open_trade["entry_price"]
-        price = price_arr[i]
+        i         = n - 1
+        d         = open_trade["direction"]
+        ep        = open_trade["entry_price"]
+        price     = price_arr[i]
         bars_held = i - open_trade["entry_bar"]
-        raw_ret = d * (price - ep) / ep
-        net_ret = raw_ret - spread / ep
+        raw_ret   = d * (price - ep) / ep
+        net_ret   = raw_ret - spread / ep
         pnl_dollars = net_ret * capital
-        capital += pnl_dollars
+        capital  += pnl_dollars
         trade_log.append({
             "entry_bar":   open_trade["entry_bar"],
             "exit_bar":    i,
@@ -298,35 +291,30 @@ def run_backtest(
             "exit_reason": "END_OF_DATA",
         })
 
-    eq        = equity_curve
-    ret_arr   = bar_returns
+    eq      = equity_curve
+    ret_arr = bar_returns
 
     total_return = float(eq[-1] - 1.0)
     mdd          = _max_drawdown(eq)
+    net_sh       = _sharpe(ret_arr)
+    sortino_v    = _sortino(ret_arr)
+    gross_sh     = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
+    calmar_v     = (total_return / abs(mdd)) if mdd < 0 else 0.0
 
-    
-    net_sh    = _sharpe(ret_arr)
-    sortino_v = _sortino(ret_arr)
-
-    
-    gross_sh  = _sharpe(ret_arr[ret_arr > 0]) if (ret_arr > 0).any() else 0.0
-
-    calmar_v  = (total_return / abs(mdd)) if mdd < 0 else 0.0
-
-    wins   = [t for t in trade_log if t["pnl_pct"] >= 0]
-    losses = [t for t in trade_log if t["pnl_pct"] < 0]
+    wins     = [t for t in trade_log if t["pnl_pct"] >= 0]
+    losses   = [t for t in trade_log if t["pnl_pct"] < 0]
     n_trades = len(trade_log)
-    win_rate  = len(wins) / n_trades if n_trades else 0.0
+    win_rate = len(wins) / n_trades if n_trades else 0.0
 
     gross_profit = sum(t["pnl_pct"] for t in wins)
     gross_loss   = abs(sum(t["pnl_pct"] for t in losses))
     pf = (gross_profit / gross_loss) if gross_loss > 0 else float("inf")
-    pf = min(pf, 999.0)   # cap to avoid JSON inf
+    pf = min(pf, 999.0)
 
     avg_bars = float(np.mean([t["bars_held"] for t in trade_log])) if trade_log else 0.0
     turnover = float((pos_arr != 0).mean())
 
-    sig_counts = signals.value_counts().to_dict()
+    sig_counts  = signals.value_counts().to_dict()
     signal_dist = {
         "Long":  int(sig_counts.get(1, 0)),
         "Short": int(sig_counts.get(-1, 0)),
@@ -334,7 +322,6 @@ def run_backtest(
     }
 
     roll_sh = _rolling_sharpe(ret_arr, window=390)
-
     ts_list = list(timestamps) if timestamps else []
 
     return BacktestResult(
@@ -349,8 +336,8 @@ def run_backtest(
         rolling_sharpe  = [round(float(v), 6) for v in roll_sh],
         timestamps      = ts_list,
         signal_dist     = signal_dist,
-        net_sharpe      = round(net_sh,      6),
-        gross_sharpe    = round(gross_sh,    6),
+        net_sharpe      = round(net_sh,       6),
+        gross_sharpe    = round(gross_sh,     6),
         total_return    = round(total_return, 8),
         max_drawdown    = round(mdd,          8),
         calmar          = round(calmar_v,     6),
@@ -367,22 +354,21 @@ def run_backtest(
 
 
 def run_wf_folds(
-    pair:           str,
-    strategy:       str,
-    n_folds:        int          = 5,
-    split:          str          = "train",
-    spread_pips:    Optional[float] = None,
-    tp_pips:        Optional[float] = None,
-    sl_pips:        Optional[float] = None,
-    capital_initial: float       = 10_000.0,
-    max_hold_bars:  Optional[int]   = None,
-    session:        Optional[str]   = None,
-    entry_time:     Optional[str]   = None,
-    resample:       Optional[str]   = None,
-    direction_mode: str          = "long_short",
-    mode:           str          = "research",
+    pair:            str,
+    strategy:        str,
+    n_folds:         int             = 5,
+    split:           str             = "train",
+    spread_pips:     Optional[float] = None,
+    tp_pips:         Optional[float] = None,
+    sl_pips:         Optional[float] = None,
+    capital_initial: float           = 10_000.0,
+    max_hold_bars:   Optional[int]   = None,
+    session:         Optional[str]   = None,
+    entry_time:      Optional[str]   = None,
+    resample:        Optional[str]   = None,
+    direction_mode:  str             = "long_short",
+    mode:            str             = "research",
 ) -> list[BacktestResult]:
-    """Walk-forward cross-validation over the train split."""
     path = _DATASETS / "train" / f"{pair}_train.parquet"
     if not path.exists():
         raise FileNotFoundError(
@@ -399,16 +385,15 @@ def run_wf_folds(
 
     fold_size = len(df) // n_folds
     results   = []
-
-    strat = get_strategy(strategy)
+    strat     = get_strategy(strategy)
 
     for k in range(n_folds):
-        start = k * fold_size
-        end   = start + fold_size if k < n_folds - 1 else len(df)
+        start   = k * fold_size
+        end     = start + fold_size if k < n_folds - 1 else len(df)
         fold_df = df.iloc[start:end].reset_index(drop=True)
 
-        signals = strat.generate_signals(fold_df).reset_index(drop=True)
-        prices  = fold_df["close"].reset_index(drop=True)
+        signals    = strat.generate_signals(fold_df).reset_index(drop=True)
+        prices     = fold_df["close"].reset_index(drop=True)
         timestamps = (
             fold_df["timestamp_utc"]
             .dt.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -420,7 +405,7 @@ def run_wf_folds(
             prices          = prices,
             pair            = pair,
             strategy        = strat.name,
-            split           = f"train_fold{k+1}",
+            split           = f"train_fold{k + 1}",
             spread_pips     = spread_pips,
             tp_pips         = tp_pips,
             sl_pips         = sl_pips,

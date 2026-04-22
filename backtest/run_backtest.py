@@ -11,12 +11,12 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from backtest.engine    import PAIRS, run_backtest, run_wf_folds
+from backtest.engine         import PAIRS, run_backtest, run_wf_folds
 from backtest.report_generator import generate_report
-from backtest.strategies import STRATEGY_REGISTRY, get_strategy
+from backtest.strategies     import STRATEGY_REGISTRY, get_strategy
 
 SPLIT_ROOT_DIR = PROJECT_DIR / "datasets"
-CLEANED_DIR    = PROJECT_DIR / "data" / "processed" / "cleaned"  
+CLEANED_DIR    = PROJECT_DIR / "data" / "processed" / "cleaned"
 TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
 VAL_DIR        = SPLIT_ROOT_DIR / "val"
 TEST_DIR       = SPLIT_ROOT_DIR / "test"
@@ -24,19 +24,23 @@ TEST_DIR       = SPLIT_ROOT_DIR / "test"
 ALL_PAIRS      = PAIRS
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
 
-# Named splits the user can pass to --split.
 NAMED_SPLITS = ["full", "train", "val", "test"] + [f"fold_{i}" for i in range(5)]
 
-# Session windows(UTC)
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
     "london":  (7,  16),
     "ny":      (13, 22),
     "asia":    (23,  8),
-    "overlap": (13, 16),  
+    "overlap": (13, 16),
 }
 
 
-# Argument parser
+_TTY   = sys.stdout.isatty()
+GREEN  = "\033[92m" if _TTY else ""
+YELLOW = "\033[93m" if _TTY else ""
+RED    = "\033[91m" if _TTY else ""
+CYAN   = "\033[96m" if _TTY else ""
+RESET  = "\033[0m"  if _TTY else ""
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -61,19 +65,17 @@ def parse_args() -> argparse.Namespace:
         metavar="SPLIT",
         help=(
             "Data split to run on.\n"
-            "  full   -- entire cleaned history (DEFAULT, use for rule-based strategies)\n"
+            "  full   -- entire cleaned history (DEFAULT)\n"
             "            loads from data/processed/cleaned/{pair}_2015_2025_clean.parquet\n"
             "  train  -- training partition\n"
             "  val    -- validation partition\n"
             "  test   -- held-out test partition\n"
             "  fold_N -- walk-forward fold N (0-4) within the train partition\n"
             "\n"
-            "Rule-based strategies (MA crossover, Donchian, etc.) have no\n"
-            "fittable parameters, so 'full' is always the correct choice.\n"
+            "Rule-based strategies have no fittable parameters so 'full' is always correct.\n"
             "Use train/val/test only when evaluating ML-based strategies."
         ),
     )
-
     parser.add_argument(
         "--from", dest="date_from",
         type=str, default=None,
@@ -81,8 +83,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Start of the analysis window (inclusive).\n"
             "Accepts ISO 8601: '2022-01-01' or '2022-01-01T00:00:00'.\n"
-            "Applied AFTER loading the split parquet.\n"
-            "Tip: run without --from/--to first to see the available date range."
+            "Applied AFTER loading the split parquet."
         ),
     )
     parser.add_argument(
@@ -94,13 +95,11 @@ def parse_args() -> argparse.Namespace:
             "Accepts ISO 8601: '2022-12-31' or '2022-12-31T23:59:00'."
         ),
     )
-
     parser.add_argument(
         "--folds", type=int, default=0,
         metavar="FOLDS",
         help="Walk-forward folds (uses train split). 0 = single full-period run.",
     )
-
     parser.add_argument(
         "--capital", type=float, default=10_000.0,
         metavar="CAPITAL",
@@ -129,7 +128,6 @@ def parse_args() -> argparse.Namespace:
             "With 1-min data: 60 = 1 h, 240 = 4 h."
         ),
     )
-
     parser.add_argument(
         "--session",
         choices=list(_SESSION_HOURS.keys()),
@@ -150,7 +148,6 @@ def parse_args() -> argparse.Namespace:
         metavar="FREQ",
         help="Resample bars before running. Any pandas offset string: 1H 4H 15min 1D.",
     )
-
     parser.add_argument(
         "--direction",
         choices=["long_short", "long_only", "short_only"],
@@ -161,6 +158,19 @@ def parse_args() -> argparse.Namespace:
             "long_short -- both longs and shorts (default)\n"
             "long_only  -- suppress short (-1) signals\n"
             "short_only -- suppress long  (+1) signals"
+        ),
+    )
+
+    parser.add_argument(
+        "--mode",
+        choices=["research", "simulation"],
+        default=None,
+        metavar="MODE",
+        help=(
+            "Override the run mode label written to the HTML report.\n"
+            "If omitted, inferred automatically:\n"
+            "  simulation -- when --from is provided\n"
+            "  research   -- otherwise"
         ),
     )
 
@@ -176,8 +186,6 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-
-# Resolvers
 
 def resolve_pairs(raw: list[str]) -> list[str]:
     if raw == ["all"]:
@@ -200,7 +208,6 @@ def resolve_strategies(raw: list[str]) -> list[str]:
 
 
 def resolve_split_path(split: str, pair: str) -> Path:
-    """Returns the parquet path for a given split/pair combination."""
     if split == "full":
         return CLEANED_DIR / f"{pair}_2015_2025_clean.parquet"
     if split == "train" or split.startswith("fold_"):
@@ -211,7 +218,6 @@ def resolve_split_path(split: str, pair: str) -> Path:
         return TEST_DIR  / f"{pair}_test.parquet"
     raise ValueError(f"Unrecognised split: {split!r}")
 
-# Data loader
 
 def load_split_data(
     pair:      str,
@@ -219,7 +225,6 @@ def load_split_data(
     date_from: str | None = None,
     date_to:   str | None = None,
 ) -> pd.DataFrame:
-    """Loads the parquet for pair/split"""
     path = resolve_split_path(split, pair)
     if not path.exists():
         hint = (
@@ -227,16 +232,14 @@ def load_split_data(
             if split == "full"
             else "Run scripts/split_fx_data.py first to generate datasets/train|val|test/ parquets."
         )
-        raise FileNotFoundError(
-            f"Parquet not found: {path}\n{hint}"
-        )
+        raise FileNotFoundError(f"Parquet not found: {path}\n{hint}")
 
     df = pd.read_parquet(path)
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
     df = df.sort_values("timestamp_utc").reset_index(drop=True)
 
     if split.startswith("fold_"):
-        fold_idx = int(split.split("_")[1])   
+        fold_idx = int(split.split("_")[1])
         n_folds  = 5
         fold_sz  = len(df) // n_folds
         start    = fold_idx * fold_sz
@@ -251,7 +254,6 @@ def load_split_data(
         df = df[df["timestamp_utc"] >= ts_from].reset_index(drop=True)
     if date_to:
         ts_to = pd.Timestamp(date_to, tz="UTC")
-        # make end-of-day inclusive when only a date string is supplied
         if re.match(r"^\d{4}-\d{2}-\d{2}$", date_to.strip()):
             ts_to = ts_to + pd.Timedelta(hours=23, minutes=59, seconds=59)
         df = df[df["timestamp_utc"] <= ts_to].reset_index(drop=True)
@@ -261,27 +263,17 @@ def load_split_data(
             f"No data for {pair} / {split} after applying "
             f"--from {date_from}  --to {date_to}.\n"
             f"  Available range for this split: {actual_start} -> {actual_end}\n"
-            f"  Tip: rule-based strategies should use --split full to access "
-            f"the entire history."
+            f"  Tip: rule-based strategies should use --split full."
         )
 
     return df
 
-# Console formatting
-
-SEP  = "-" * 115
-SEP2 = "=" * 115
-
-GREEN  = "\033[92m"
-YELLOW = "\033[93m"
-RED    = "\033[91m"
-CYAN   = "\033[96m"
-RESET  = "\033[0m"
-
 
 def _sharpe_colour(v: float) -> str:
-    if v >= 0.5:  return GREEN
-    if v >= 0.0:  return YELLOW
+    if v >= 0.5:
+        return GREEN
+    if v >= 0.0:
+        return YELLOW
     return RED
 
 
@@ -333,6 +325,10 @@ def print_banner(
     print()
 
 
+SEP  = "-" * 115
+SEP2 = "=" * 115
+
+
 def print_header() -> None:
     print(SEP)
     print(
@@ -379,7 +375,6 @@ def print_summary(results: list) -> None:
     print(SEP2)
     print()
 
-# Main
 
 def main() -> None:
     args       = parse_args()
@@ -387,7 +382,11 @@ def main() -> None:
     strategies = resolve_strategies(args.strategy)
     total_runs = len(pairs) * len(strategies)
 
-    mode = "simulation" if args.capital != 10_000.0 else "research"
+    # ── FIX 1 (P4) ── mode inferred from --from, not from capital
+    if args.mode is not None:
+        mode = args.mode
+    else:
+        mode = "simulation" if args.date_from is not None else "research"
 
     print_banner(pairs, strategies, args, total_runs, mode)
     print_header()
@@ -397,7 +396,6 @@ def main() -> None:
 
     for pair in pairs:
 
-        # Walk-forward CV path 
         if args.folds > 0:
             for strat_name in strategies:
                 fold_results = run_wf_folds(
@@ -420,7 +418,6 @@ def main() -> None:
                 print_run(pair, strat_name, fold_results[-1])
                 sys.stdout.flush()
 
-        # Single-run path
         else:
             df_split = load_split_data(
                 pair      = pair,

@@ -210,3 +210,19 @@ __marimo__/
 
 eda_split_readiness.py
 inspect_fx_data.py
+
+
+# Data files
+data/
+datasets/
+features/
+labels/
+eda/
+output/
+
+# Generated reports
+backtest/reports/
+*.html
+
+# Parquet files
+*.parquet

@@ -5,6 +5,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.constants import PURGE_ROWS, HORIZON_SECONDARY
+
+assert PURGE_ROWS >= HORIZON_SECONDARY, (
+    f"PURGE_ROWS ({PURGE_ROWS}) must be >= HORIZON_SECONDARY ({HORIZON_SECONDARY}) "
+    "to prevent label leakage across split boundaries."
+)
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 LABEL_ROOT_DIR = PROJECT_DIR / "labels"
