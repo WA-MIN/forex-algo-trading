@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from config.constants import VOL_HIGH_REGIME_PERCENTILE
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 CLEAN_ROOT_DIR = PROJECT_DIR / "data" / "processed"
@@ -41,7 +43,6 @@ OVERLAP_START_HOUR = 13
 OVERLAP_END_HOUR = 16
 
 VOL_REGIME_WINDOW = 30
-VOL_REGIME_QUANTILE = 0.80
 
 
 def ensure_dir(path: Path) -> Path:
@@ -150,13 +151,12 @@ def add_volatility_regime_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     vol_col = f"rv_{VOL_REGIME_WINDOW}"
-    threshold_col = f"{vol_col}_q{int(VOL_REGIME_QUANTILE * 100)}"
+    threshold_col = f"{vol_col}_q{int(VOL_HIGH_REGIME_PERCENTILE * 100)}"
 
-    # expanding quantile avoids look-ahead
     out[threshold_col] = (
         out[vol_col]
         .expanding(min_periods=VOL_REGIME_WINDOW)
-        .quantile(VOL_REGIME_QUANTILE)
+        .quantile(VOL_HIGH_REGIME_PERCENTILE)
     )
     out["volatility_regime_high"] = (out[vol_col] > out[threshold_col]).astype("int8")
     out["volatility_regime_code"] = out["volatility_regime_high"]
@@ -231,7 +231,6 @@ def build_pair_features(
     before_drop = len(out)
 
     if drop_warmup:
-        # drop rows where any rolling feature is still in its warmup window
         required_feature_cols = [
             "ret_1", "ret_5", "ret_15",
             "rv_10", "rv_30", "rv_60",
