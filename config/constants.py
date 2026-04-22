@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-TRADING_DAYS_PER_YEAR = 252
+import os
+from pathlib import Path
 
-BARS_PER_TRADING_DAY = 390
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+TRADING_DAYS_PER_YEAR = int(os.getenv("TRADING_DAYS_PER_YEAR", "252"))
+
+BARS_PER_TRADING_DAY = int(os.getenv("BARS_PER_TRADING_DAY", "390"))
 
 ANNUALISATION_FACTOR = TRADING_DAYS_PER_YEAR * BARS_PER_TRADING_DAY
 
-MIN_BARS_PER_DAY = 1200
+MIN_BARS_PER_DAY = int(os.getenv("MIN_BARS_PER_DAY", "1200"))
 
 MIN_BARS_FOR_SHARPE = 2
 
@@ -14,7 +21,7 @@ ROLLING_SHARPE_WINDOW = 390
 
 PROFIT_FACTOR_CAP = 999.0
 
-DEFAULT_CAPITAL = 10_000.0
+DEFAULT_CAPITAL = float(os.getenv("DEFAULT_CAPITAL", "10000.0"))
 
 DEFAULT_N_FOLDS = 5
 
@@ -44,8 +51,8 @@ PAIR_SPREAD_PIPS: dict[str, float] = {
     "NZDUSD": 1.2,
 }
 
-TRAIN_END   = "2021-12-31"
-VAL_START   = "2022-01-01"
-VAL_END     = "2023-12-31"
-TEST_START  = "2024-01-01"
-TEST_END    = "2025-12-31"
+TRAIN_END  = "2021-12-31"
+VAL_START  = "2022-01-01"
+VAL_END    = "2023-12-31"
+TEST_START = "2024-01-01"
+TEST_END   = "2025-12-31"
