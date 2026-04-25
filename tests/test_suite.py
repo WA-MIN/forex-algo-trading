@@ -1,10 +1,10 @@
 """
-Forex Algo Trading 
+Forex Algo Trading
 All results are written to  tests/test_results.txt
 
 Usage
     python tests/test_suite.py
-    python tests/test_suite.py -v    
+    python tests/test_suite.py -v
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing     import Any, Callable, List, Tuple
 import numpy  as np
 import pandas as pd
 
-# Path setup — allow running from project root or tests/
+# Path setup - allow running from project root or tests/
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
@@ -76,7 +76,7 @@ class TestRunner:
             tr.detail  = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
 
         if self.verbose:
-            icon = "✓" if tr.passed else "✗"
+            icon = "+" if tr.passed else "x"
             print(f"  {icon} [{tr.group}] {tr.name}")
 
         self.results.append(tr)
@@ -89,7 +89,7 @@ class TestRunner:
         return passed, failed, errors
 
 
-# Fixtures — synthetic price data
+# Fixtures - synthetic price data
 
 def _make_prices(
     n: int = 500,
@@ -162,7 +162,7 @@ def _run_simple(
     )
 
 
-# Group A — engine helpers
+# Group A - engine helpers
 
 def test_sharpe_zero_std():
     arr = np.zeros(100)
@@ -250,7 +250,7 @@ def test_rolling_sharpe_constant_zero():
     rs  = _rolling_sharpe(arr, window=20)
     assert all(v == 0.0 for v in rs)
 
-# Group B — run_backtest core
+# Group B - run_backtest core
 
 def test_backtest_returns_result_type():
     r = _run_simple()
@@ -352,7 +352,7 @@ def test_metrics_dict_keys():
     assert keys == expected, f"Missing keys: {expected - keys}"
 
 
-# Group C — exit logic
+# Group C - exit logic
 
 def _make_tp_sl_df(direction: int, tp_pct: float = 0.005) -> pd.DataFrame:
     """Returns a DataFrame where price moves monotonically up or down by tp_pct, guaranteeing TP is hit."""
@@ -370,7 +370,7 @@ def _make_tp_sl_df(direction: int, tp_pct: float = 0.005) -> pd.DataFrame:
 def test_tp_hit_long():
     df  = _make_tp_sl_df(direction=1, tp_pct=0.005)
     sig = pd.Series(np.zeros(len(df), dtype=int))
-    sig.iloc[1] = 1  
+    sig.iloc[1] = 1
     r = run_backtest(
         signals=sig, prices=df["close"],
         pair="EURUSD", strategy="test",
@@ -393,7 +393,7 @@ def test_sl_hit_long():
     """Price drops by > sl_pips on a long trade -> SL triggered."""
     df  = _make_tp_sl_df(direction=-1, tp_pct=0.01)
     sig = pd.Series(np.zeros(len(df), dtype=int))
-    sig.iloc[1] = 1   
+    sig.iloc[1] = 1
     r = run_backtest(
         signals=sig, prices=df["close"],
         pair="EURUSD", strategy="test",
@@ -421,7 +421,7 @@ def test_max_hold_exit():
 def test_signal_flip_exit():
     sig = pd.Series(np.zeros(200, dtype=int))
     sig.iloc[10]  =  1
-    sig.iloc[50]  = -1  
+    sig.iloc[50]  = -1
     df = _make_prices(200)
     r  = run_backtest(
         signals=sig, prices=df["close"],
@@ -433,7 +433,7 @@ def test_signal_flip_exit():
 def test_end_of_data_exit():
     """A trade open at the last bar should be closed with END_OF_DATA."""
     sig = pd.Series(np.zeros(100, dtype=int))
-    sig.iloc[90] = 1   
+    sig.iloc[90] = 1
     df  = _make_prices(100)
     r   = run_backtest(
         signals=sig, prices=df["close"],
@@ -470,7 +470,7 @@ def test_sl_pnl_negative_long():
     assert sl_trades[0]["pnl_pct"] < 0, "SL on failing long should be negative"
 
 
-# Group D — direction modes
+# Group D - direction modes
 
 def test_long_only_no_short_trades():
     r = _run_simple(500, "random", direction_mode="long_only")
@@ -498,7 +498,7 @@ def test_short_only_fewer_trades_than_long_short():
     r_so = _run_simple(500, "random", direction_mode="short_only")
     assert r_so.n_trades <= r_ls.n_trades
 
-# Group E — session & entry-time filters
+# Group E - session & entry-time filters
 
 def test_in_session_london():
     hours = pd.Series([6, 7, 12, 15, 16, 20])
@@ -506,20 +506,21 @@ def test_in_session_london():
     assert list(mask) == [False, True, True, True, False, False]
 
 def test_in_session_asia_wraps_midnight():
+    # FIX: the valid session key is "asia", not "tokyo".
+    # Asia session: start=23, end=8 (wraps midnight).
     hours = pd.Series([22, 23, 0, 3, 7, 8, 12])
-    mask  = _in_session(hours, "tokyo")
+    mask  = _in_session(hours, "asia")
     assert list(mask) == [False, True, True, True, True, False, False]
 
 def test_session_filter_reduces_signals():
     """London session filter should allow fewer signal bars than no filter."""
-    df  = _make_prices(1000)  
+    df  = _make_prices(1000)
     sig = _make_signals(1000, "random", seed=10)
-    r_all     = run_backtest(signals=sig, prices=df["close"],
-                             pair="EURUSD", strategy="test", df_full=df)
-    r_london  = run_backtest(signals=sig, prices=df["close"],
-                             pair="EURUSD", strategy="test",
-                             session="london", df_full=df)
-    
+    r_all    = run_backtest(signals=sig, prices=df["close"],
+                            pair="EURUSD", strategy="test", df_full=df)
+    r_london = run_backtest(signals=sig, prices=df["close"],
+                            pair="EURUSD", strategy="test",
+                            session="london", df_full=df)
     assert r_london.n_trades <= r_all.n_trades
 
 def test_entry_time_filter():
@@ -538,7 +539,7 @@ def test_session_ny():
     assert list(mask) == [False, True, True, True, False, False]
 
 
-# Group F — spread mechanics
+# Group F - spread mechanics
 
 def test_zero_spread_higher_return():
     r_spread = _run_simple(500, "random", spread_pips=2.0)
@@ -571,13 +572,13 @@ def test_default_spread_table_coverage():
         assert p in _DEFAULT_SPREAD, f"{p} missing from spread table"
 
 
-# Group G — all 13 strategies
+# Group G - all 13 strategies
 
 DEFAULT_PRICES = _make_prices(2000, seed=99)
 
 # Strategies that forward-fill their signal (hold positions) rather than
 # emitting pure crossover events will legitimately have flat% < 50%.
-# We apply a relaxed threshold (>15%) for those — still confirms they
+# We apply a relaxed threshold (>15%) for those - still confirms they
 # produce a mix of signals rather than all-long or all-short.
 _HELD_POSITION_STRATEGIES = {
     "MACrossover_f10_s30_EMA",
@@ -601,19 +602,15 @@ def _strategy_checks(name: str):
     flat_pct = counts.get(0, 0) / n * 100
 
     if name in _HELD_POSITION_STRATEGIES:
-        # Held-position / trend-following strategies stay in the market most
-        # of the time — flat% can legitimately be well below 50%.  We just
-        # confirm it is not 0% (all-long/all-short) or 100% (dead strategy).
         assert flat_pct > 5, (
-            f"{name}: flat%={flat_pct:.1f} — strategy produces no transitions"
+            f"{name}: flat%={flat_pct:.1f} - strategy produces no transitions"
         )
         assert flat_pct < 95, (
-            f"{name}: flat%={flat_pct:.1f} — strategy almost never trades"
+            f"{name}: flat%={flat_pct:.1f} - strategy almost never trades"
         )
     else:
-        # Pure crossover strategies should be flat >50% of bars
         assert flat_pct > 50, (
-            f"{name}: flat%={flat_pct:.1f} — likely forwarding positions unexpectedly"
+            f"{name}: flat%={flat_pct:.1f} - likely forwarding positions unexpectedly"
         )
 
     # at least one non-zero signal on 2000 bars
@@ -621,7 +618,6 @@ def _strategy_checks(name: str):
     assert n_events > 0, f"{name}: zero crossover events on 2000 bars"
 
 for _sname in STRATEGY_REGISTRY:
-    # register each as a named function so the test runner can identify them
     def _make_test(sn=_sname):
         def _t():
             _strategy_checks(sn)
@@ -630,7 +626,7 @@ for _sname in STRATEGY_REGISTRY:
     globals()[f"test_strategy_{_sname}"] = _make_test()
 
 
-# Group H — strategy constructor validation
+# Group H - strategy constructor validation
 
 def test_ma_fast_ge_slow_raises():
     try:
@@ -709,7 +705,7 @@ def test_get_strategy_unknown_raises():
     except ValueError:
         pass
 
-# Group I — BacktestResult dataclass
+# Group I - BacktestResult dataclass
 
 def test_backtest_result_defaults():
     r = BacktestResult(pair="EURUSD", strategy="test",
@@ -732,7 +728,6 @@ def test_calmar_zero_when_no_drawdown():
 
 def test_profit_factor_inf_cap():
     """profit_factor is capped at 999 when there are no losing trades."""
-    # all-long on a monotonically rising price
     df  = _make_tp_sl_df(direction=1, tp_pct=0.002)
     sig = pd.Series(np.zeros(len(df), dtype=int))
     sig.iloc[1] = 1
@@ -749,20 +744,22 @@ def test_pair_and_strategy_stored():
     assert r.strategy == "test"
 
 
-# Group J — data loader / split path resolution
-# Import the resolver directly
+# Group J - data loader / split path resolution
+
 from backtest.run_backtest import resolve_split_path, load_split_data, NAMED_SPLITS
 
 
 def test_full_split_path():
-    p = resolve_split_path("full", "EURUSD")
-    # FIX: use Path comparison instead of str endswith('/') to work on Windows (backslash) and POSIX (forward slash) paths alike.
-    p = Path(p)
-    assert p.name == "EURUSD.parquet", (
-        f"Expected filename EURUSD.parquet, got: {p.name}"
+    # FIX: resolve_split_path("full", ...) returns
+    # data/processed/cleaned/{pair}_2015_2025_clean.parquet
+    # Compare using Path parts so the test works on Windows (backslash)
+    # and POSIX (forward slash) alike.
+    p = Path(resolve_split_path("full", "EURUSD"))
+    assert p.name == "EURUSD_2015_2025_clean.parquet", (
+        f"Expected EURUSD_2015_2025_clean.parquet, got: {p.name}"
     )
-    assert p.parent.name == "datasets", (
-        f"Expected parent dir 'datasets', got: {p.parent.name}  (full path: {p})"
+    assert p.parent.name == "cleaned", (
+        f"Expected parent dir 'cleaned', got: {p.parent.name}  (full path: {p})"
     )
 
 def test_train_split_path():
@@ -777,10 +774,18 @@ def test_test_split_path():
     p = resolve_split_path("test", "AUDUSD")
     assert "test" in str(p)
 
-def test_fold_uses_train_parquet():
+def test_fold_uses_folds_dir():
+    # FIX: after the fold parquet fix, fold_N paths live under
+    # datasets/folds/fold_N/{pair}_train.parquet, not the train root.
     for i in range(5):
-        p = resolve_split_path(f"fold_{i}", "EURUSD")
-        assert "train" in str(p), f"fold_{i} should use train parquet"
+        p = Path(resolve_split_path(f"fold_{i}", "EURUSD"))
+        assert p.parent.parent.name == "folds", (
+            f"fold_{i} parquet should be inside datasets/folds/, "
+            f"got parent.parent: {p.parent.parent.name}  (full path: {p})"
+        )
+        assert p.name == "EURUSD_train.parquet", (
+            f"fold_{i} filename should be EURUSD_train.parquet, got: {p.name}"
+        )
 
 def test_named_splits_contains_full():
     assert "full" in NAMED_SPLITS
@@ -798,11 +803,9 @@ def test_load_data_date_filter_empty_gives_error():
     try:
         load_split_data("EURUSD", "full",
                         date_from="2099-01-01", date_to="2099-01-02")
-        # If file doesn't exist we expect FileNotFoundError
-        # If file exists but date range empty we expect ValueError
         assert False, "Should have raised"
     except (FileNotFoundError, ValueError):
-        pass  
+        pass
 
 def test_resolve_unknown_split_raises():
     try:
@@ -812,7 +815,7 @@ def test_resolve_unknown_split_raises():
         pass
 
 
-# Group K — edge cases for run_backtest
+# Group K - edge cases for run_backtest
 
 def test_single_bar_input():
     """run_backtest must not crash on a single bar."""
@@ -849,12 +852,9 @@ def test_high_capital():
     assert r.capital_initial == 1_000_000.0
 
 def test_zero_capital_does_not_crash():
-    # FIX: engine.py now guards against capital_initial=0 (was ZeroDivisionError).
-    # Equity curve should stay at 1.0 throughout since no PnL accumulates.
     r = _run_simple(300, "alternating", capital_initial=0.0)
     assert isinstance(r, BacktestResult), "Should return a BacktestResult even with zero capital"
     assert r.capital_initial == 0.0
-    # equity curve is normalised against 1.0 internally so all bars == 1.0
     assert all(abs(v - 1.0) < 1e-9 for v in r.equity), (
         "equity curve should be flat at 1.0 when capital=0"
     )
@@ -889,7 +889,7 @@ def test_timestamps_stored():
     assert len(r.timestamps) == 200
 
 def test_resample_df_reduces_rows():
-    df   = _make_prices(390)  # 390 1-min bars = 1 trading day
+    df   = _make_prices(390)  # 390 1-min bars
     df_r = _resample_df(df, "1h")
     assert len(df_r) < len(df), "resampled df should have fewer rows"
     assert "close" in df_r.columns
@@ -900,7 +900,7 @@ def test_resample_df_ohlcv_agg():
     assert df_r["high"].iloc[0] >= df_r["close"].iloc[0]
     assert df_r["low"].iloc[0]  <= df_r["close"].iloc[0]
 
-# Group L — walk-forward fold slicing (no disk I/O, pure logic)
+# Group L - walk-forward fold slicing (no disk I/O, pure logic)
 
 def test_fold_slicing_correct_size():
     """Verify fold slicing logic matches what run_wf_folds would produce."""
@@ -912,7 +912,6 @@ def test_fold_slicing_correct_size():
         start = k * fold_sz
         end   = start + fold_sz if k < n_folds - 1 else n
         sizes.append(end - start)
-    # first 4 folds equal size, last fold may be larger
     for s in sizes[:4]:
         assert s == fold_sz, f"Fold size {s} != {fold_sz}"
     assert sizes[-1] >= fold_sz
@@ -983,7 +982,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
     lines = []
 
     lines.append(SEP2)
-    lines.append("  FOREX ALGO TRADING — TEST RESULTS")
+    lines.append("  FOREX ALGO TRADING - TEST RESULTS")
     lines.append(f"  Generated : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"  Duration  : {elapsed:.2f}s")
     lines.append(SEP2)
@@ -993,9 +992,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
     lines.append(SEP2)
     lines.append("")
 
-    # group breakdown
     by_group: dict[str, list[TestResult]] = {g: [] for g in GROUP_ORDER}
-    # also catch any unlabelled groups
     for r in runner.results:
         g = r.group if r.group in by_group else "?"
         by_group.setdefault(g, []).append(r)
@@ -1007,7 +1004,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
         g_pass  = sum(1 for t in tests if t.passed)
         g_total = len(tests)
         label   = GROUP_NAMES.get(g, g)
-        lines.append(f"Group {g} — {label}")
+        lines.append(f"Group {g} - {label}")
         lines.append(f"  Result: {g_pass}/{g_total} passed")
         lines.append(SEP)
 
@@ -1019,7 +1016,6 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
                     lines.append(f"           {dl}")
         lines.append("")
 
-    # failures summary
     failures = [r for r in runner.results if not r.passed]
     if failures:
         lines.append(SEP2)
@@ -1037,7 +1033,7 @@ def write_report(runner: TestRunner, elapsed: float) -> str:
 # Main runner
 
 def collect_tests() -> list[tuple[str, str, Callable]]:
-    """Collect all test functions from this module and assign them a group based on the GROUP_ORDER mapping."""
+    """Collect all test functions from this module and assign them a group."""
     group_map = {
         "sharpe": "A", "sortino": "A", "max_drawdown": "A", "rolling_sharpe": "A",
         "equity": "B", "dollar": "B", "capital": "B", "no_trades": "B",
@@ -1075,7 +1071,6 @@ def collect_tests() -> list[tuple[str, str, Callable]]:
                 break
         tests.append((name, group, obj))
 
-    # stable sort: group then name
     tests.sort(key=lambda x: (x[1], x[0]))
     return tests
 
@@ -1087,7 +1082,7 @@ def main():
     runner = TestRunner(verbose=verbose)
     tests  = collect_tests()
 
-    print(f"\n  Forex Algo Trading — Test Suite")
+    print(f"\n  Forex Algo Trading - Test Suite")
     print(f"  {len(tests)} tests collected")
     print(f"  {'verbose' if verbose else 'silent'} mode  (use -v for live output)")
     print()
@@ -1101,11 +1096,9 @@ def main():
     passed, failed, errors = runner.summary()
     report = write_report(runner, elapsed)
 
-    # Write to file
     RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     RESULTS_FILE.write_text(report, encoding="utf-8")
 
-    # Print summary to console
     print(report)
     print(f"  Results written to: {RESULTS_FILE}")
     print()
