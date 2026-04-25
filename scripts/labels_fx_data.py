@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from config.constants import HORIZON_PRIMARY, HORIZON_SECONDARY
+
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
 FEATURE_ROOT_DIR = PROJECT_DIR / "features"
@@ -23,8 +25,6 @@ REQUIRED_COLUMNS = [
     "session",
 ]
 
-DEFAULT_HORIZON_PRIMARY = 5
-DEFAULT_HORIZON_SECONDARY = 15
 DEFAULT_THRESHOLD_PRIMARY = 0.0005
 DEFAULT_THRESHOLD_SECONDARY = 0.0010
 
@@ -46,13 +46,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--horizon-primary",
         type=int,
-        default=DEFAULT_HORIZON_PRIMARY,
+        default=HORIZON_PRIMARY,
         help="Primary forward return horizon in rows/minutes.",
     )
     parser.add_argument(
         "--horizon-secondary",
         type=int,
-        default=DEFAULT_HORIZON_SECONDARY,
+        default=HORIZON_SECONDARY,
         help="Secondary forward return horizon in rows/minutes.",
     )
     parser.add_argument(
