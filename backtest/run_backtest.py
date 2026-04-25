@@ -20,6 +20,7 @@ CLEANED_DIR    = PROJECT_DIR / "data" / "processed" / "cleaned"
 TRAIN_DIR      = SPLIT_ROOT_DIR / "train"
 VAL_DIR        = SPLIT_ROOT_DIR / "val"
 TEST_DIR       = SPLIT_ROOT_DIR / "test"
+FOLDS_DIR      = SPLIT_ROOT_DIR / "folds"
 
 ALL_PAIRS      = PAIRS
 ALL_STRATEGIES = list(STRATEGY_REGISTRY.keys())
@@ -70,7 +71,7 @@ def parse_args() -> argparse.Namespace:
             "  train  -- training partition\n"
             "  val    -- validation partition\n"
             "  test   -- held-out test partition\n"
-            "  fold_N -- walk-forward fold N (0-4) within the train partition\n"
+            "  fold_N -- walk-forward fold N (0-4), reads from datasets/folds/fold_N/\n"
             "\n"
             "Rule-based strategies have no fittable parameters so 'full' is always correct.\n"
             "Use train/val/test only when evaluating ML-based strategies."
@@ -208,10 +209,20 @@ def resolve_strategies(raw: list[str]) -> list[str]:
 
 
 def resolve_split_path(split: str, pair: str) -> Path:
+    """Return the parquet path for a given split name and currency pair.
+
+    fold_N splits are resolved to datasets/folds/fold_N/{pair}_train.parquet
+    — the year-aligned, purge-gapped files written by scripts/split_fx_data.py.
+    This ensures walk-forward evaluation uses proper calendar boundaries and no
+    label leakage, rather than a raw index-slice of the monolithic train parquet.
+    """
     if split == "full":
         return CLEANED_DIR / f"{pair}_2015_2025_clean.parquet"
-    if split == "train" or split.startswith("fold_"):
+    if split == "train":
         return TRAIN_DIR / f"{pair}_train.parquet"
+    if split.startswith("fold_"):
+        fold_idx = int(split.split("_")[1])
+        return FOLDS_DIR / f"fold_{fold_idx}" / f"{pair}_train.parquet"
     if split == "val":
         return VAL_DIR   / f"{pair}_val.parquet"
     if split == "test":
@@ -227,24 +238,23 @@ def load_split_data(
 ) -> pd.DataFrame:
     path = resolve_split_path(split, pair)
     if not path.exists():
-        hint = (
-            "Run scripts/clean_fx_data.py first to generate data/processed/cleaned/ parquets."
-            if split == "full"
-            else "Run scripts/split_fx_data.py first to generate datasets/train|val|test/ parquets."
-        )
+        if split.startswith("fold_"):
+            hint = (
+                f"Run scripts/split_fx_data.py --force-folds to generate "
+                f"datasets/folds/ parquets."
+            )
+        elif split == "full":
+            hint = "Run scripts/clean_fx_data.py first to generate data/processed/cleaned/ parquets."
+        else:
+            hint = "Run scripts/split_fx_data.py first to generate datasets/train|val|test/ parquets."
         raise FileNotFoundError(f"Parquet not found: {path}\n{hint}")
 
     df = pd.read_parquet(path)
     df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
     df = df.sort_values("timestamp_utc").reset_index(drop=True)
 
-    if split.startswith("fold_"):
-        fold_idx = int(split.split("_")[1])
-        n_folds  = 5
-        fold_sz  = len(df) // n_folds
-        start    = fold_idx * fold_sz
-        end      = start + fold_sz if fold_idx < n_folds - 1 else len(df)
-        df = df.iloc[start:end].reset_index(drop=True)
+    # NOTE: no index-slicing for fold_N — the fold parquet already contains
+    # only the correct year-aligned, purge-gapped rows for that fold.
 
     actual_start = df["timestamp_utc"].iloc[0].strftime("%Y-%m-%d")
     actual_end   = df["timestamp_utc"].iloc[-1].strftime("%Y-%m-%d")
@@ -382,7 +392,7 @@ def main() -> None:
     strategies = resolve_strategies(args.strategy)
     total_runs = len(pairs) * len(strategies)
 
-    # ── FIX 1 (P4) ── mode inferred from --from, not from capital
+    # mode inferred from --from, not from capital
     if args.mode is not None:
         mode = args.mode
     else:
