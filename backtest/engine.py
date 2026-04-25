@@ -8,6 +8,12 @@ import numpy as np
 import pandas as pd
 
 from backtest.strategies import STRATEGY_REGISTRY, get_strategy
+from config.constants import (
+    ANNUALISATION_FACTOR,
+    PROFIT_FACTOR_CAP,
+    ROLLING_SHARPE_WINDOW,
+    PAIR_SPREAD_PIPS,
+)
 
 PAIRS: list[str] = [
     "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
@@ -17,8 +23,7 @@ PAIRS: list[str] = [
 _PIP: dict[str, float] = {p: (0.01 if "JPY" in p else 0.0001) for p in PAIRS}
 
 _DEFAULT_SPREAD: dict[str, float] = {
-    "EURUSD": 0.6, "GBPUSD": 0.8, "USDJPY": 0.7, "USDCHF": 1.0,
-    "AUDUSD": 0.8, "USDCAD": 1.0, "NZDUSD": 1.2,
+    p: PAIR_SPREAD_PIPS[p] for p in PAIRS if p in PAIR_SPREAD_PIPS
 }
 
 _DATASETS = Path(__file__).resolve().parent.parent / "datasets"
@@ -92,7 +97,7 @@ class BacktestResult:
         }
 
 
-def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
+def _sharpe(returns: np.ndarray, periods_per_year: int = ANNUALISATION_FACTOR) -> float:
     if len(returns) < 2:
         return 0.0
     std = returns.std()
@@ -101,7 +106,7 @@ def _sharpe(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
     return float(returns.mean() / std * np.sqrt(periods_per_year))
 
 
-def _sortino(returns: np.ndarray, periods_per_year: int = 252 * 390) -> float:
+def _sortino(returns: np.ndarray, periods_per_year: int = ANNUALISATION_FACTOR) -> float:
     downside = returns[returns < 0]
     if len(downside) < 2:
         return 0.0
@@ -119,7 +124,7 @@ def _max_drawdown(equity: np.ndarray) -> float:
     return float(dd.min())
 
 
-def _rolling_sharpe(returns: np.ndarray, window: int = 390) -> list[float]:
+def _rolling_sharpe(returns: np.ndarray, window: int = ROLLING_SHARPE_WINDOW) -> list[float]:
     out = []
     for i in range(len(returns)):
         w = returns[max(0, i - window + 1): i + 1]
@@ -309,7 +314,7 @@ def run_backtest(
     gross_profit = sum(t["pnl_pct"] for t in wins)
     gross_loss   = abs(sum(t["pnl_pct"] for t in losses))
     pf = (gross_profit / gross_loss) if gross_loss > 0 else float("inf")
-    pf = min(pf, 999.0)
+    pf = min(pf, PROFIT_FACTOR_CAP)
 
     avg_bars = float(np.mean([t["bars_held"] for t in trade_log])) if trade_log else 0.0
     turnover = float((pos_arr != 0).mean())
@@ -321,7 +326,7 @@ def run_backtest(
         "Flat":  int(sig_counts.get(0, 0)),
     }
 
-    roll_sh = _rolling_sharpe(ret_arr, window=390)
+    roll_sh = _rolling_sharpe(ret_arr, window=ROLLING_SHARPE_WINDOW)
     ts_list = list(timestamps) if timestamps else []
 
     return BacktestResult(
