@@ -27,6 +27,7 @@ _DEFAULT_SPREAD: dict[str, float] = {
 }
 
 _DATASETS = Path(__file__).resolve().parent.parent / "datasets"
+_FOLDS_DIR = _DATASETS / "folds"
 
 _SESSION_HOURS: dict[str, tuple[int, int]] = {
     "london":  (7,  16),
@@ -374,28 +375,24 @@ def run_wf_folds(
     direction_mode:  str             = "long_short",
     mode:            str             = "research",
 ) -> list[BacktestResult]:
-    path = _DATASETS / "train" / f"{pair}_train.parquet"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"Train parquet not found: {path}\n"
-            f"Run scripts/split_fx_data.py first."
-        )
-
-    df = pd.read_parquet(path)
-    df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], utc=True)
-    df = df.sort_values("timestamp_utc").reset_index(drop=True)
-
-    if resample:
-        df = _resample_df(df, resample)
-
-    fold_size = len(df) // n_folds
-    results   = []
-    strat     = get_strategy(strategy)
+    results = []
+    strat   = get_strategy(strategy)
 
     for k in range(n_folds):
-        start   = k * fold_size
-        end     = start + fold_size if k < n_folds - 1 else len(df)
-        fold_df = df.iloc[start:end].reset_index(drop=True)
+        fold_path = _FOLDS_DIR / f"fold_{k}" / f"{pair}_train.parquet"
+        if not fold_path.exists():
+            raise FileNotFoundError(
+                f"Fold parquet not found: {fold_path}\n"
+                f"Run scripts/split_fx_data.py --force-folds to generate "
+                f"datasets/folds/fold_{k}/ before calling run_wf_folds."
+            )
+
+        fold_df = pd.read_parquet(fold_path)
+        fold_df["timestamp_utc"] = pd.to_datetime(fold_df["timestamp_utc"], utc=True)
+        fold_df = fold_df.sort_values("timestamp_utc").reset_index(drop=True)
+
+        if resample:
+            fold_df = _resample_df(fold_df, resample)
 
         signals    = strat.generate_signals(fold_df).reset_index(drop=True)
         prices     = fold_df["close"].reset_index(drop=True)
@@ -410,7 +407,7 @@ def run_wf_folds(
             prices          = prices,
             pair            = pair,
             strategy        = strat.name,
-            split           = f"train_fold{k + 1}",
+            split           = f"fold_{k}",
             spread_pips     = spread_pips,
             tp_pips         = tp_pips,
             sl_pips         = sl_pips,
@@ -421,7 +418,7 @@ def run_wf_folds(
             entry_time      = entry_time,
             direction_mode  = direction_mode,
             mode            = mode,
-            fold_index      = k + 1,
+            fold_index      = k,
             df_full         = fold_df,
         )
         results.append(r)
