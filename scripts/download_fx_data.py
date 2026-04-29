@@ -17,15 +17,9 @@ PARQUET_DIR = DATA_DIR / "parquet"
 EXTRACTED_DIR.mkdir(parents=True, exist_ok=True)
 PARQUET_DIR.mkdir(parents=True, exist_ok=True)
 
-PAIRS = [
-    "EURUSD",
-    "GBPUSD",
-    "USDJPY",
-    "USDCHF",
-    "USDCAD",
-    "AUDUSD",
-    "NZDUSD",
-]
+import sys
+sys.path.insert(0, str(PROJECT_DIR))
+from config.constants import PAIRS
 
 YEARS = list(range(2015, 2026))
 

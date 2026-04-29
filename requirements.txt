@@ -6,3 +6,11 @@ matplotlib
 seaborn
 pyyaml
 python-dotenv
+torch
+scipy
+
+# Optional - clean automated PDF export of HTML backtest reports.
+# Install only if you use scripts/export_report_pdf.py:
+#   pip install playwright
+#   python -m playwright install chromium
+# playwright>=1.40
