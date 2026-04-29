@@ -414,13 +414,16 @@ Open `master_report.txt` in any text viewer for the headline ranking, the DM tes
 
 For any (pair, strategy) cell that warrants closer inspection, run `backtest/run_backtest.py` directly to produce an interactive HTML report.
 
+The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy RSI_p14_os30_ob70`: the RSI mean-reversion strategy with period 14, oversold threshold 30, overbought threshold 70
+- `--split full`: load the full cleaned history parquet from `data/processed/cleaned/`; rule-based strategies have no fittable parameters so `full` is always correct for them
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report to disk without opening it in a browser
+
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy RSI_p14_os30_ob70 \
-  --split full \
-  --capital 10000 \
-  --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy RSI_p14_os30_ob70 --split full --capital 10000 --no-browser
 ```
 
 Expected console output:
@@ -454,16 +457,17 @@ Expected console output:
 
 The HTML report contains the equity curve, the drawdown trajectory, the rolling Sharpe (390-bar window by default), the signal distribution histogram, and the full trade ledger. Open it in any modern browser. A sample HTML report covering five pairs and four ML strategies is committed at [docs/assets/sample_report.html](assets/sample_report.html) for reference.
 
-A multi-strategy head-to-head invocation comparing three strategies on the same window:
+A multi-strategy head-to-head invocation comparing three strategies on the same window. The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy RSI_p14_os30_ob70 LR_global LSTM_global`: three strategies to compare (one rule-based, one Logistic Regression, one LSTM); the `--strategy` flag accepts a list
+- `--split test`: load the locked test split parquet (`datasets/test/`)
+- `--from 2024-01-01 --to 2024-12-31`: narrow the window to the 2024 calendar year inside the test split
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report to disk without opening it in a browser
 
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy RSI_p14_os30_ob70 LR_global LSTM_global \
-  --split test \
-  --from 2024-01-01 --to 2024-12-31 \
-  --capital 10000 \
-  --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy RSI_p14_os30_ob70 LR_global LSTM_global --split test --from 2024-01-01 --to 2024-12-31 --capital 10000 --no-browser
 ```
 
 The HTML report renders all three equity curves on shared axes for visual comparison.
@@ -553,14 +557,17 @@ python scripts/master_eval.py --ml-only --eval-year 2024 --spreads 1.0
 <details>
 <summary>Multi-strategy head-to-head</summary>
 
-Compare three strategies on the same window in a single backtest invocation:
+Compare three strategies on the same window in a single backtest invocation. The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy RSI_p14_os30_ob70 LR_global LSTM_global`: three strategies passed to the same `--strategy` flag (the flag accepts a list)
+- `--split test`: load the locked test split parquet
+- `--from 2024-01-01 --to 2024-12-31`: restrict to 2024 inside the test split
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report without auto-opening it
 
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy RSI_p14_os30_ob70 LR_global LSTM_global \
-  --split test --from 2024-01-01 --to 2024-12-31 \
-  --capital 10000 --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy RSI_p14_os30_ob70 LR_global LSTM_global --split test --from 2024-01-01 --to 2024-12-31 --capital 10000 --no-browser
 ```
 
 The HTML report renders all three equity curves on the same axes for visual comparison.
@@ -570,12 +577,13 @@ The HTML report renders all three equity curves on the same axes for visual comp
 <details>
 <summary>Exporting an HTML report to PDF</summary>
 
-Requires the optional `playwright` dependency.
+Requires the optional `playwright` dependency. The flags used below:
+
+- `--input`: path to the source HTML report (glob patterns are accepted)
+- `--output`: path where the rendered PDF should be written
 
 ```bash
-python scripts/export_report_pdf.py \
-  --input backtest/reports/report_EURUSD_RSI_p14_os30_ob70_*.html \
-  --output backtest/reports/report.pdf
+python scripts/export_report_pdf.py --input backtest/reports/report_EURUSD_RSI_p14_os30_ob70_*.html --output backtest/reports/report.pdf
 ```
 
 The exporter renders the HTML through a headless Chromium and prints to a single-page PDF.
@@ -598,14 +606,17 @@ Custom windows must lie inside the locked test split. The script validates the b
 <details>
 <summary>Walk-forward backtest on the rule-based stack</summary>
 
-Run a strategy across all five training folds:
+Run a strategy across all five training folds. The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy MACrossover_f20_s50_EMA`: the moving-average crossover strategy with fast EMA period 20 and slow EMA period 50
+- `--split train`: load the training split parquet (the only split that has folds)
+- `--folds 5`: run the strategy across all five contiguous walk-forward folds
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report without auto-opening it
 
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy MACrossover_f20_s50_EMA \
-  --split train --folds 5 \
-  --capital 10000 --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy MACrossover_f20_s50_EMA --split train --folds 5 --capital 10000 --no-browser
 ```
 
 The output report contains per-fold metrics plus a stability score (mean Sharpe minus half the standard deviation across folds).

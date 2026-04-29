@@ -132,13 +132,16 @@ venv\Scripts\activate              # Windows
 
 ### 3. Run a single backtest
 
+The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy RSI_p14_os30_ob70`: the RSI mean-reversion strategy (period 14, oversold 30, overbought 70)
+- `--split full`: run on the full cleaned history (`data/processed/cleaned/`); rule-based strategies have no fittable parameters so `full` is always correct for them
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report to disk without opening it in a browser
+
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy RSI_p14_os30_ob70 \
-  --split full \
-  --capital 10000 \
-  --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy RSI_p14_os30_ob70 --split full --capital 10000 --no-browser
 ```
 
 Expected console output, abridged:
@@ -410,12 +413,17 @@ output/master_eval/
 
 Open `output/master_eval/master_report.txt` for the headline ranking, the DM test results, and the per-pair transfer matrices in plain text. The seven CSVs are the canonical structured form for downstream analysis. For any (pair, strategy) cell that warrants closer inspection, run `backtest/run_backtest.py` directly to produce an interactive HTML report.
 
+The flags used below:
+
+- `--pair EURUSD`: the currency pair to test
+- `--strategy RSI_p14_os30_ob70 LR_global LSTM_global`: three strategies to compare side-by-side: an RSI rule-based strategy, the global Logistic Regression model, and the global LSTM model
+- `--split test`: use the locked test split parquet (`datasets/test/`)
+- `--from 2024-01-01 --to 2024-12-31`: restrict to the 2024 calendar year inside the test split
+- `--capital 10000`: starting capital in USD
+- `--no-browser`: write the HTML report to disk without opening it in a browser
+
 ```bash
-python backtest/run_backtest.py \
-  --pair EURUSD \
-  --strategy RSI_p14_os30_ob70 LR_global LSTM_global \
-  --split test --from 2024-01-01 --to 2024-12-31 \
-  --capital 10000 --no-browser
+python backtest/run_backtest.py --pair EURUSD --strategy RSI_p14_os30_ob70 LR_global LSTM_global --split test --from 2024-01-01 --to 2024-12-31 --capital 10000 --no-browser
 ```
 
 This invocation produces a multi-strategy HTML report comparing three strategies on the same window. The report writes to `backtest/reports/` with an auto-generated timestamped filename.
