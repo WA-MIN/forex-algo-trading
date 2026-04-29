@@ -16,6 +16,7 @@ FX backtest results in published research are rarely comparable across studies. 
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="docs/REPLICATION.md">Replication walkthrough</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="docs/SETUP.md">Setup</a> ·
   <a href="docs/EXPERIMENTS.md">Experiments</a> ·
@@ -121,7 +122,7 @@ python bootstrap.py --no-pipeline --no-train   # environment only
 python bootstrap.py --yes                       # full setup, unattended
 ```
 
-If you prefer manual control, the equivalent steps are documented in [docs/SETUP.md](docs/SETUP.md).
+If you prefer manual control, the equivalent steps are documented in [docs/SETUP.md](docs/SETUP.md). For a linear, time-ordered walkthrough that takes a new person from clone all the way to running a backtest and reading the master-evaluation output, see [docs/REPLICATION.md](docs/REPLICATION.md).
 
 ### 2. Activate the environment
 

@@ -38,6 +38,11 @@ seaborn==0.13.2
 PyYAML==6.0.3
 python-dotenv==1.2.2
 
+# HTTP client and HTML parsing (used by scripts/download_fx_data.py to scrape
+# yearly FX bar archives from histdata.com)
+requests==2.32.5
+beautifulsoup4==4.14.3
+
 # ----- Optional dependencies (uncomment to enable) -----
 
 # Playwright drives the headless Chromium used by scripts/export_report_pdf.py
