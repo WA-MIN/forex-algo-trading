@@ -1,16 +1,46 @@
-pandas
-numpy
-pyarrow
-scikit-learn
-matplotlib
-seaborn
-pyyaml
-python-dotenv
-torch
-scipy
+# forex-algo-trading runtime dependencies (pinned)
+#
+# These are the direct production dependencies the project imports.
+# Versions are pinned to the exact versions tested in development.
+# Transitive dependencies are resolved by pip and not listed here.
+#
+# To install everything in one step from a fresh clone, use:
+#     python bootstrap.py
+#
+# Or manually:
+#     python -m venv venv
+#     source venv/bin/activate          # macOS / Linux
+#     venv\Scripts\activate              # Windows
+#     pip install -r requirements.txt
 
-# Optional - clean automated PDF export of HTML backtest reports.
-# Install only if you use scripts/export_report_pdf.py:
-#   pip install playwright
-#   python -m playwright install chromium
-# playwright>=1.40
+# Data manipulation and IO
+pandas==3.0.1
+numpy==2.4.3
+pyarrow==23.0.1
+
+# Machine learning - classical
+scikit-learn==1.8.0
+
+# Machine learning - deep
+# Note: this pins the platform-default build of torch. For CUDA support,
+# install torch separately with the appropriate index URL from
+# https://pytorch.org/get-started/locally/ before running pip install.
+torch==2.6.0
+
+# Statistics and significance testing
+scipy==1.17.1
+
+# Plotting (used by the HTML report generator and EDA scripts)
+matplotlib==3.10.8
+seaborn==0.13.2
+
+# Configuration loading
+PyYAML==6.0.3
+python-dotenv==1.2.2
+
+# ----- Optional dependencies (uncomment to enable) -----
+
+# Playwright drives the headless Chromium used by scripts/export_report_pdf.py
+# to convert HTML backtest reports to PDF. Skip unless PDF export is needed.
+# After installing, run: python -m playwright install chromium
+# playwright==1.58.0

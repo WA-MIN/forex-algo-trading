@@ -6,6 +6,32 @@ The full pipeline run from a cold clone takes roughly 90 minutes to 3 hours of h
 
 ---
 
+## The fast path: bootstrap.py
+
+The repository ships with a one-step setup script at the root. It handles steps 1 through 7 of this document automatically.
+
+```bash
+python bootstrap.py                    # interactive (recommended on first run)
+python bootstrap.py --yes              # unattended; runs everything including pipeline and training
+python bootstrap.py --no-pipeline --no-train   # environment only, skip the long steps
+```
+
+The script:
+
+1. Verifies the Python version is 3.11 or higher.
+2. Creates `./venv` if missing.
+3. Upgrades pip, setuptools, and wheel inside the venv.
+4. Installs every pinned dependency from `requirements.txt`.
+5. Runs the pytest suite to verify the install.
+6. Prompts before running the data pipeline (stages 1 to 5).
+7. Prompts before training the LR x LSTM model grid.
+
+After the script completes, activate the venv in your shell (`source venv/bin/activate` on macOS / Linux, `venv\Scripts\activate` on Windows) and run `python scripts/master_eval.py --eval-year 2024 --spreads 1.0` to produce the first evaluation.
+
+The remainder of this document is the manual reference for each step the bootstrap script automates.
+
+---
+
 ## Prerequisites
 
 | Requirement | Minimum version | Check command | Expected output |

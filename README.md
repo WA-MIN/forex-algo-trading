@@ -104,37 +104,30 @@ A full sample HTML report covering five pairs and four ML strategies is committe
 
 ## Quick start
 
-The fastest path from clone to first result. Three steps.
+The fastest path from clone to first result is the bootstrap script, which handles environment creation, dependency install, verification, and (optionally) the data pipeline and model training in one command.
 
-### 1. Clone and install
+### 1. Clone and bootstrap
 
 ```bash
 git clone https://github.com/Kanyal-HarsH/forex-algo-trading.git
 cd forex-algo-trading
-python -m venv venv
-source venv/bin/activate          # macOS / Linux
-# venv\Scripts\activate            # Windows
-pip install -r requirements.txt
+python bootstrap.py
 ```
 
-Expected last line of `pip install`:
-
-```
-Successfully installed numpy-X.Y.Z pandas-X.Y.Z torch-X.Y.Z ...
-```
-
-### 2. Verify the environment
+The script verifies the Python version, creates `./venv`, upgrades pip, installs every pinned dependency from `requirements.txt`, runs the test suite, and prompts before the long-running pipeline (90 minutes to 3 hours) and model training (8 to 14 hours). Skip those prompts with `--no-pipeline --no-train` if you only want the environment, or accept everything unattended with `--yes`.
 
 ```bash
-python -m pytest tests/ -q
+python bootstrap.py --no-pipeline --no-train   # environment only
+python bootstrap.py --yes                       # full setup, unattended
 ```
 
-Expected output (line counts vary as tests are added):
+If you prefer manual control, the equivalent steps are documented in [docs/SETUP.md](docs/SETUP.md).
 
-```
-............................................................
-12 tests collected ...
-all tests passed in 1.5s
+### 2. Activate the environment
+
+```bash
+source venv/bin/activate          # macOS / Linux
+venv\Scripts\activate              # Windows
 ```
 
 ### 3. Run a single backtest
