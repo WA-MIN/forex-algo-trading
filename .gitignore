@@ -36,10 +36,8 @@ features/
 labels/
 eda/
 output/
-models/
-scalers/
 
-# Binary data formats
+# Binary data formats (catches model checkpoints under models/ and scalers/)
 *.parquet
 *.pkl
 *.pt
@@ -49,6 +47,10 @@ tests/
 backtest/reports/
 *.html
 .gitattributes
+
+# Allow demo assets and the sample report to ship under docs/assets/
+!docs/assets/*.html
+!docs/assets/*.png
 
 # Inspection scripts kept local
 eda_split_readiness.py
