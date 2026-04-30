@@ -32,9 +32,6 @@ After all steps complete, the system is ready for strategy backtesting.
   Preview what would run without executing anything:
     python scripts/run_all_data_scripts.py --dry-run
 
-  Combine flags freely:
-    python scripts/run_all_data_scripts.py --from-step 4 --force
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -42,7 +39,6 @@ import subprocess
 import sys
 import os
 import time
-import logging
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -52,9 +48,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # ── Pipeline definition ───────────────────────────────────────────────────────
-#
-# validates     : directories that must exist AND be non-empty after the step
-# skip_if_exist : if ALL of these are non-empty, step is skipped with --skip-existing
 
 STEPS = [
     {
@@ -73,7 +66,7 @@ STEPS = [
         "module": "scripts.inspect_fx_data",
         "script": "inspect_fx_data.py",
         "validates": [],
-        "skip_if_exist": [],        # read-only — never skipped
+        "skip_if_exist": [],
     },
     {
         "number": 3,
@@ -124,25 +117,7 @@ STEPS = [
 
 TOTAL_STEPS = len(STEPS)
 
-# ── Dependency config ─────────────────────────────────────────────────────────
-#
-# To add or remove a required package, edit requirements.txt only.
-# No changes needed here.
-#
-# MANUAL_INSTALL: packages that must NOT be auto-installed because the correct
-# build is platform-dependent (e.g. CPU vs CUDA). The user is shown
-# instructions instead.
-#
-# PIP_TO_IMPORT: pip name → import name, only where they differ.
-
-MANUAL_INSTALL = {
-    "torch": (
-        "PyTorch requires a platform-specific install command.\n"
-        "     Visit https://pytorch.org/get-started/locally/ to get the right\n"
-        "     command for your OS / CUDA version, then re-run this script."
-    ),
-}
-
+# Packages where pip name and import name differ
 PIP_TO_IMPORT = {
     "scikit-learn":   "sklearn",
     "pyyaml":         "yaml",
@@ -150,21 +125,26 @@ PIP_TO_IMPORT = {
     "beautifulsoup4": "bs4",
 }
 
+# Packages that must NOT be auto-installed — platform-specific builds
+MANUAL_INSTALL = {
+    "torch": (
+        "PyTorch requires a platform-specific install command.\n"
+        "  Visit https://pytorch.org/get-started/locally/ for the right\n"
+        "  command for your OS / CUDA version, then re-run this script."
+    ),
+}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def log(msg: str = "") -> None:
+    print(msg)
 
 def is_windows() -> bool:
     return sys.platform.startswith("win")
 
-
-def sep(char="─", width=56) -> str:
-    return char * width
-
-
 def dir_nonempty(path: Path) -> bool:
-    """True only if path is a directory containing at least one file."""
     return path.is_dir() and any(True for f in path.rglob("*") if f.is_file())
-
 
 def can_import(name: str) -> bool:
     try:
@@ -174,123 +154,69 @@ def can_import(name: str) -> bool:
         return False
 
 
-# ── Logging ───────────────────────────────────────────────────────────────────
-
-def setup_logging():
-    logs_dir = PROJECT_ROOT / "logs"
-    logs_dir.mkdir(exist_ok=True)
-    log_file = logs_dir / f"pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-
-    logger = logging.getLogger("pipeline")
-    logger.setLevel(logging.DEBUG)
-
-    fh = logging.FileHandler(log_file, encoding="utf-8")
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.INFO)
-    ch.setFormatter(logging.Formatter("%(message)s"))
-
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    return logger, log_file
-
-
 # ── Dependency checking ───────────────────────────────────────────────────────
 
 def parse_requirements() -> list:
-    """
-    Read requirements.txt and return [(pip_name, import_name), ...].
-    Skips blank lines, full-line comments, and commented-out optional packages.
-    """
     req_file = PROJECT_ROOT / "requirements.txt"
     if not req_file.exists():
         return []
-
     packages = []
     for raw in req_file.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         pip_name = line.split("==")[0].split(">=")[0].split("#")[0].strip()
-        if not pip_name:
-            continue
-        import_name = PIP_TO_IMPORT.get(pip_name.lower(), pip_name.lower())
-        packages.append((pip_name, import_name))
+        if pip_name:
+            import_name = PIP_TO_IMPORT.get(pip_name.lower(), pip_name.lower())
+            packages.append((pip_name, import_name))
     return packages
 
 
-def pip_install(args_str: str, logger: logging.Logger) -> bool:
+def pip_install(args_str: str) -> bool:
     cmd = [sys.executable, "-m", "pip", "install"] + args_str.split() + ["--quiet"]
-    logger.info(f"     pip install {args_str} ...")
+    log(f"  pip install {args_str} ...")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0:
-            logger.error(r.stderr.strip())
+            log(r.stderr.strip())
             return False
         return True
     except Exception as exc:
-        logger.error(f"     pip error: {exc}")
+        log(f"  pip error: {exc}")
         return False
 
 
-def check_venv(logger: logging.Logger) -> None:
-    in_venv = hasattr(sys, "real_prefix") or (
-        hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
-    )
-    if not in_venv:
-        logger.warning(
-            "  ⚠  Not running inside a virtual environment.\n"
-            "     PyCharm : File → Settings → Project → Python Interpreter\n"
-            "     Terminal: source venv/bin/activate   (macOS/Linux)\n"
-            "               venv\\Scripts\\activate       (Windows)"
-        )
-    else:
-        logger.info(f"  Virtual environment: {sys.prefix}")
-
-
-def ensure_dependencies(logger: logging.Logger) -> bool:
-    check_venv(logger)
-    logger.info("  Checking dependencies ...")
-
+def ensure_dependencies() -> bool:
+    log("  Checking dependencies ...")
     packages = parse_requirements()
     if not packages:
-        logger.warning("  requirements.txt not found — skipping dependency check.")
+        log("  requirements.txt not found — skipping dependency check.")
         return True
 
     req_file = PROJECT_ROOT / "requirements.txt"
 
-    missing_auto   = [(p, i) for p, i in packages
-                      if p.lower() not in MANUAL_INSTALL and not can_import(i)]
-    missing_manual = [(p, i) for p, i in packages
-                      if p.lower() in MANUAL_INSTALL and not can_import(i)]
-
+    missing_auto   = [(p, i) for p, i in packages if p.lower() not in MANUAL_INSTALL and not can_import(i)]
+    missing_manual = [(p, i) for p, i in packages if p.lower() in MANUAL_INSTALL and not can_import(i)]
     all_ok = True
 
     if missing_auto:
-        logger.info(f"  Missing: {', '.join(p for p, _ in missing_auto)}")
-        logger.info("  Installing from requirements.txt ...")
-        if pip_install(f"-r {req_file}", logger):
+        log(f"  Missing: {', '.join(p for p, _ in missing_auto)}")
+        log("  Installing from requirements.txt ...")
+        if pip_install(f"-r {req_file}"):
             still = [p for p, i in missing_auto if not can_import(i)]
             if still:
-                logger.error(
-                    "  Installed but still unimportable: " + ", ".join(still)
-                    + "\n  Run  pip install -r requirements.txt  manually."
-                )
+                log(f"  ERROR: installed but still unimportable: {', '.join(still)}")
+                log("  Run  pip install -r requirements.txt  manually.")
                 all_ok = False
             else:
-                logger.info("  All packages installed successfully  ✓")
+                log("  All packages installed successfully  ✓")
         else:
             all_ok = False
     else:
-        logger.info("  All dependencies present  ✓")
+        log("  All dependencies present  ✓")
 
     for pip_name, _ in missing_manual:
-        logger.error(
-            f"\n  ✗  '{pip_name}' is not installed.\n"
-            f"     {MANUAL_INSTALL[pip_name.lower()]}\n"
-        )
+        log(f"\n  ✗  '{pip_name}' is not installed.\n  {MANUAL_INSTALL[pip_name.lower()]}")
         all_ok = False
 
     return all_ok
@@ -298,26 +224,21 @@ def ensure_dependencies(logger: logging.Logger) -> bool:
 
 # ── Pre-flight ────────────────────────────────────────────────────────────────
 
-def run_preflight(logger: logging.Logger) -> bool:
-    logger.info(sep())
-    logger.info("  Pre-flight checks")
-    logger.info(sep())
-
+def run_preflight() -> bool:
     major, minor = sys.version_info[:2]
-    if major < 3 or (major == 3 and minor < 8):
-        logger.error(
-            f"  Python 3.8+ required — you are running {major}.{minor}.\n"
+    if major < 3 or (major == 3 and minor < 11):
+        log(
+            f"  ERROR: Python 3.11+ required — you are running {major}.{minor}.\n"
             "  Download from https://www.python.org/downloads/"
         )
         return False
-    logger.info(f"  Python {major}.{minor}  ✓")
-
-    return ensure_dependencies(logger)
+    log(f"  Python {major}.{minor}  ✓")
+    return ensure_dependencies()
 
 
 # ── Output validation ─────────────────────────────────────────────────────────
 
-def validate_outputs(step: dict, logger: logging.Logger) -> bool:
+def validate_outputs(step: dict) -> bool:
     if not step["validates"]:
         return True
     problems = [
@@ -326,25 +247,18 @@ def validate_outputs(step: dict, logger: logging.Logger) -> bool:
         if not dir_nonempty(PROJECT_ROOT / p)
     ]
     if problems:
-        logger.error(
-            f"\n  Output validation failed (step {step['number']}):\n"
-            + "\n".join(problems)
-            + "\n  Script ran without errors but produced no output files."
-        )
+        log(f"\n  Output validation failed (step {step['number']}):\n" + "\n".join(problems))
         return False
     return True
 
 
 # ── Skip logic ────────────────────────────────────────────────────────────────
 
-def should_skip(step: dict, logger: logging.Logger) -> bool:
+def should_skip(step: dict) -> bool:
     if not step["skip_if_exist"]:
         return False
     if all(dir_nonempty(PROJECT_ROOT / p) for p in step["skip_if_exist"]):
-        logger.info(
-            f"  ⏭  Step {step['number']}/{TOTAL_STEPS}: {step['name']}"
-            " — outputs already exist, skipping."
-        )
+        log(f"  ⏭  Step {step['number']}/{TOTAL_STEPS}: {step['name']} — outputs exist, skipping.")
         return True
     return False
 
@@ -359,14 +273,12 @@ def build_command(step: dict) -> list:
 
 # ── Step runner ───────────────────────────────────────────────────────────────
 
-def run_step(step: dict, logger: logging.Logger) -> bool:
+def run_step(step: dict) -> bool:
     n, name = step["number"], step["name"]
     cmd = build_command(step)
 
-    logger.info(sep())
-    logger.info(f"  Step {n}/{TOTAL_STEPS}: {name}")
-    logger.info(f"  {step['description']} ...")
-    logger.debug(f"  Command: {' '.join(cmd)}")
+    log(f"\n  Step {n}/{TOTAL_STEPS}: {name}")
+    log(f"  {step['description']} ...")
 
     start = time.time()
     try:
@@ -377,55 +289,46 @@ def run_step(step: dict, logger: logging.Logger) -> bool:
             cwd=str(PROJECT_ROOT), env=env,
         )
     except FileNotFoundError:
-        logger.error(f"  Script not found: {cmd[-1]}")
+        log(f"  ERROR: script not found: {cmd[-1]}")
         return False
     except Exception as exc:
-        logger.error(f"  Failed to launch step {n}: {exc}")
+        log(f"  ERROR: failed to launch step {n}: {exc}")
         return False
 
     elapsed = time.time() - start
 
-    if result.stdout:
-        logger.debug(f"[stdout]\n{result.stdout.rstrip()}")
-    if result.stderr:
-        logger.debug(f"[stderr]\n{result.stderr.rstrip()}")
-
     if result.returncode != 0:
         if result.stderr:
             for line in result.stderr.strip().splitlines()[-25:]:
-                logger.info(f"    {line}")
-        logger.error(f"\n  Step {n} ({name}) FAILED (exit {result.returncode}, {elapsed:.1f}s)\n")
+                log(f"    {line}")
+        log(f"\n  Step {n} ({name}) FAILED (exit {result.returncode}, {elapsed:.1f}s)")
         return False
 
-    if not validate_outputs(step, logger):
+    if not validate_outputs(step):
         return False
 
-    logger.info(f"  Step {n}/{TOTAL_STEPS}: {name} — complete  ✓  ({elapsed:.1f}s)")
+    log(f"  Step {n}/{TOTAL_STEPS}: {name} — complete  ✓  ({elapsed:.1f}s)")
     return True
 
 
 # ── Completion banner ─────────────────────────────────────────────────────────
 
-def print_complete(logger: logging.Logger) -> None:
-    logger.info("")
-    logger.info(sep("═"))
-    logger.info("  ✅  System initialised — all pipeline steps complete!")
-    logger.info(sep("═"))
-    logger.info("")
+def print_complete() -> None:
+    log("\n" + "═" * 56)
+    log("  ✅  System initialised — all pipeline steps complete!")
+    log("═" * 56 + "\n")
 
     guide_path = PROJECT_ROOT / "backtest" / "backtest_guide.txt"
     if guide_path.exists():
         content = guide_path.read_text(encoding="utf-8").strip()
-        logger.info(content if content else "  (backtest_guide.txt is empty)")
+        log(content if content else "  (backtest_guide.txt is empty)")
     else:
-        logger.info("  You can now test your strategies:")
-        logger.info("    python scripts/backtest.py --strategy <name>")
-        logger.info("    python scripts/backtest.py --list-strategies")
-        logger.info("")
-        logger.info("  Datasets:  datasets/train/   datasets/val/   datasets/test/")
-        logger.info("  Tip: add your guide to  backtest/backtest_guide.txt")
-
-    logger.info("")
+        log("  You can now test your strategies:")
+        log("    python scripts/backtest.py --strategy <name>")
+        log("    python scripts/backtest.py --list-strategies")
+        log("\n  Datasets:  datasets/train/   datasets/val/   datasets/test/")
+        log("  Tip: add your guide to  backtest/backtest_guide.txt")
+    log("")
 
 
 # ── Argument parser ───────────────────────────────────────────────────────────
@@ -451,68 +354,56 @@ def parse_args():
 
 def main() -> None:
     args = parse_args()
-    logger, log_file = setup_logging()
 
-    logger.info("")
-    logger.info(sep("═"))
-    logger.info("  FX Data Pipeline")
-    logger.info(f"  Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    logger.info(f"  Log     : {log_file}")
-    logger.info(sep("═"))
-    logger.info(
-        f"  --from-step {args.from_step}  |  --skip-existing {args.skip_existing}"
-        f"  |  --force {args.force}  |  --dry-run {args.dry_run}"
-    )
-    logger.info("")
+    log("\n" + "═" * 56)
+    log("  FX Data Pipeline")
+    log(f"  Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    log("═" * 56)
+    log(f"  --from-step {args.from_step}  |  --skip-existing {args.skip_existing}"
+        f"  |  --force {args.force}  |  --dry-run {args.dry_run}\n")
 
     if not (1 <= args.from_step <= TOTAL_STEPS):
-        logger.error(f"  --from-step must be 1–{TOTAL_STEPS}, got {args.from_step}")
+        log(f"  ERROR: --from-step must be 1–{TOTAL_STEPS}, got {args.from_step}")
         sys.exit(1)
 
     if args.dry_run:
-        logger.info("  DRY RUN — nothing will be executed.\n")
+        log("  DRY RUN — nothing will be executed.\n")
         for step in STEPS:
-            logger.info(
-                f"    Step {step['number']}: {step['name']:<12}"
-                f"  →  {' '.join(build_command(step))}"
-            )
-        logger.info("")
+            log(f"    Step {step['number']}: {step['name']:<12}  →  {' '.join(build_command(step))}")
+        log("")
         return
 
     if args.from_step == 1:
-        if not run_preflight(logger):
+        if not run_preflight():
             sys.exit(1)
-        logger.info("")
+        log("")
     else:
-        logger.info(f"  Resuming from step {args.from_step} — pre-flight skipped.\n")
+        log(f"  Resuming from step {args.from_step} — pre-flight skipped.\n")
 
     steps_to_run = [s for s in STEPS if s["number"] >= args.from_step]
     pipeline_start = time.time()
     executed = skipped = 0
 
     for step in steps_to_run:
-        if args.skip_existing and not args.force and should_skip(step, logger):
+        if args.skip_existing and not args.force and should_skip(step):
             skipped += 1
             continue
 
-        if not run_step(step, logger):
-            logger.error(sep("═"))
-            logger.error(f"  Pipeline stopped at step {step['number']}: {step['name']}")
-            logger.error(
-                f"  Resume:  python scripts/run_all_data_scripts.py"
-                f" --from-step {step['number']}"
-            )
-            logger.error(sep("═"))
+        if not run_step(step):
+            log("\n" + "═" * 56)
+            log(f"  Pipeline stopped at step {step['number']}: {step['name']}")
+            log(f"  Resume:  python scripts/run_all_data_scripts.py --from-step {step['number']}")
+            log("═" * 56)
             sys.exit(1)
 
         executed += 1
 
     mins, secs = divmod(int(time.time() - pipeline_start), 60)
-    logger.info(sep())
-    logger.info(f"  Steps run: {executed}   Skipped: {skipped}   Total time: {mins}m {secs}s")
-    logger.info(sep())
+    log("\n" + "─" * 56)
+    log(f"  Steps run: {executed}   Skipped: {skipped}   Total time: {mins}m {secs}s")
+    log("─" * 56)
 
-    print_complete(logger)
+    print_complete()
 
 
 if __name__ == "__main__":
