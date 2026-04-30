@@ -2,7 +2,6 @@
 
 This document is the long-form architecture reference for forex-algo-trading. It contains six diagrams covering the system shape, the master-evaluation flow, the strategy class hierarchy, the data flow, the evaluation tier state machine, and the dependency graph. The architecture decision records and the source-map table follow the diagrams. The lightweight summary lives in [README.md](README.md). This file is the place to look when investigating a specific component, planning a refactor, or reviewing a design choice.
 
----
 
 ## High-level system flowchart
 
@@ -38,7 +37,6 @@ flowchart TB
 
 Each pipeline stage writes to a fixed location with a fixed schema, and each stage is its own script. The isolation is deliberate: when a single stage fails, the offending stage can be re-run without invalidating downstream state. The stages also have stable boundaries that the test suite exercises directly. A regression in stage three is caught before it can corrupt stage four.
 
----
 
 ## Master evaluation sequence
 
@@ -77,7 +75,6 @@ sequenceDiagram
 
 The signal-cache decision (step 13) saves substantial runtime. The ML signal series for a given (pair, ml_strategy) does not change with the evaluation session or the spread; only the cost-and-mask bookkeeping changes. Caching the signal once and reusing it across the twelve session-by-spread combinations turns a four-hour ML evaluation into a fifteen-minute one.
 
----
 
 ## Strategy class hierarchy
 
@@ -177,7 +174,6 @@ Every strategy returns a signal series with the same index as the input price se
 
 The `BacktestResult` dataclass is the engine's only return type. Its fields populate the 13-metric set used by every tier of the master evaluation and by the standalone `run_backtest.py` CLI.
 
----
 
 ## Data flow
 
@@ -217,7 +213,6 @@ The split direction is one-way. Features and labels are computed on the full per
 
 The scaler contract is small but load-bearing. Each `scalers/{PAIR}_scaler.pkl` is a dict with two keys, `scaler` (a fitted `StandardScaler`) and `feature_cols` (the list of column names the scaler was fit against, in order). Every consumer reads both. A silent column reordering between training and inference would otherwise produce systematically wrong predictions. A regression test in `tests/test_ml_features.py` asserts that the contract is honoured end-to-end.
 
----
 
 ## Evaluation tier state machine
 
@@ -240,7 +235,6 @@ stateDiagram-v2
 
 The tier progression encodes the project's selection-versus-evaluation discipline. T1, T2, and T3 are tuning tiers and run only on the validation split. T4 is a stability check on the training folds. T5 is the only tier that touches the locked test split, and it touches the test split exactly once per evaluation cycle. There is no T6 and no further tuning beyond T5. Whatever T5 reports for a (pair, strategy) cell is the answer for that cell.
 
----
 
 ## Dependency graph
 
@@ -265,7 +259,6 @@ flowchart LR
 
 Ten direct production dependencies plus one optional dependency (`playwright`, used only by the optional PDF export of HTML backtest reports). The torch dependency dominates the install size. The LSTM is the only consumer.
 
----
 
 ## Architecture decision records
 
@@ -284,7 +277,6 @@ Ten direct production dependencies plus one optional dependency (`playwright`, u
 | Frozen feature lists | Feature schemas drift over time when not pinned. A drifted feature list breaks scaler contracts, breaks model checkpoints, and breaks reproducibility. The frozen list with a `do not modify` comment is enforced socially and tested mechanically. | Per-experiment feature configs | Convenient for individual experimentation, fatal for cross-experiment comparison. |
 | Signal cache in master evaluation | The ML signal does not change with evaluation session or spread. Caching it once per (pair, strategy) and reusing across 12 session-by-spread combinations cuts ML evaluation runtime by 16x. | Recompute every combination | Redundant computation; the dominant cost is loading the model and producing predictions across 1.5M test bars. |
 
----
 
 ## Source map
 
@@ -306,7 +298,6 @@ Ten direct production dependencies plus one optional dependency (`playwright`, u
 | `docs/assets/` | Demo screenshots (`demo1.png` through `demo5.png`) and the sample HTML report (`sample_report.html`). |
 | `eda/` | Exploratory data analysis outputs (e.g. `split_readiness/split_readiness.csv`). |
 
----
 
 ## Implementation notes
 

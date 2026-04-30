@@ -2,7 +2,6 @@
 
 This document describes how forex-algo-trading is set up as a research apparatus. The seven-stage pipeline is the experimental protocol. The locked splits, frozen feature lists, and deterministic master evaluation script are the reproducibility controls. The three research questions (RQ0, RQ1, RQ2) are the experiments themselves.
 
----
 
 ## Experimental framework
 
@@ -14,7 +13,6 @@ The master evaluation script is deterministic given a fixed configuration. Runni
 
 Output artefacts land in `output/master_eval/` and consist of one text report (`master_report.txt`) plus seven structured CSVs. `results_all.csv` combines rule-based and ML results sorted by composite score. `results_rule_based.csv` and `results_ml.csv` contain the per-class breakdowns. `best_worst_per_pair.csv` summarises per-pair extremes. `dm_test_results.csv` reports the four Diebold-Mariano comparisons per pair. `session_generalisability.csv` summarises the in-domain-versus-transfer pattern across pairs. Per-pair transfer matrices (4 by 4 Sharpe matrices for LR and LSTM) live in `transfer_matrix_lr_{PAIR}.csv` and `transfer_matrix_lstm_{PAIR}.csv`. The eighth file, `cost_breakeven.csv`, reports the spread-multiplier breakpoint at which each strategy's net return falls to zero.
 
----
 
 ## Experiment catalogue
 
@@ -28,7 +26,6 @@ The status column reflects the gating constraint for each experiment. RQ0 is ong
 
 The full LSTM grid contains 28 cells (7 pairs × 4 conditions). The four-person research team is incrementally training cells; the master evaluation reports any missing cell as `NaN` rather than silently skipping it, so partial-grid runs remain interpretable.
 
----
 
 ## Running experiments
 
@@ -86,7 +83,6 @@ python scripts/master_eval.py --from 2024-06-01 --to 2024-12-31 --spreads 1.0
 
 The script validates that any custom date window lies inside the locked test span (`TEST_START` to `TEST_END` in `config/constants.py`) and refuses anything outside.
 
----
 
 ## Reproducibility checklist
 
@@ -104,7 +100,6 @@ Before committing or publishing a result, confirm each item below.
 - Per-stage regression tests cover the scaler contract, fold path resolution, session mask boundaries, and label-feature alignment
 - Environment overrides documented in `.env.example` at the repository root
 
----
 
 ## Diebold-Mariano test design
 
@@ -121,7 +116,6 @@ The within-class champion-versus-runner-up comparison is restricted within model
 
 The DM test takes two return series and tests the null that their forecast loss differential has zero mean against the alternative that it does not. The loss differential is the per-bar net P&L difference, and a significant negative test statistic means the second strategy beats the first. The variance estimator is Newey-West HAC with a bar-frequency-appropriate lag, because consecutive minute bars are not independent and the naive variance would be much too small. The output is a p-value per comparison plus the raw mean differential and the test statistic. A p-value below 0.05 is treated as evidence of a real difference. Anything above is treated as inconclusive, not as evidence of equivalence.
 
----
 
 ## Walk-forward stability analysis
 
@@ -134,7 +128,6 @@ Two filters reject configurations from advancing to T5:
 
 Survivors of T4 carry forward to T5 (the only tier that touches the locked test split).
 
----
 
 ## What changed between iterations
 
