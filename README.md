@@ -392,12 +392,12 @@ Open project tasks that are out of scope for the current research run:
 
 The platform is built and maintained by four researchers.
 
-| Member | Role |
-|--------|------|
-| Harsh Singh Kanyal | Engine, master evaluation, infrastructure |
-| Haruka Iwami | Feature engineering, labels, statistical testing |
-| Istiak Ahmed | Strategy implementations, walk-forward analysis |
-| Savindi Hansila Weerakoon | Model training, session conditioning, transfer analysis |
+|        Members            |
+|---------------------------|
+| Harsh Singh Kanyal        |
+| Haruka Iwami              |
+| Istiak Ahmed              |
+| Savindi Hansila Weerakoon | 
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:2c5364,100:0f2027&height=100&section=footer" width="100%"/>
 
